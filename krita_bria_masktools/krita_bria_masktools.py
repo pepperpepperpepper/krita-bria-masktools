@@ -1172,7 +1172,13 @@ class BackgroundRemover(QDockWidget):
 
                                         # Process each extracted mask (walk recursively)
                                         mask_files = []
+                                        if self.debug_checkbox.isChecked():
+                                            self.log_error(f"Walking directory: {extract_dir}")
+
                                         for root, dirs, files in os.walk(extract_dir):
+                                            if self.debug_checkbox.isChecked() and files:
+                                                self.log_error(f"Found {len(files)} files in {root}")
+
                                             for filename in files:
                                                 filepath = os.path.join(root, filename)
 
@@ -1189,12 +1195,10 @@ class BackgroundRemover(QDockWidget):
                                                             self.log_error(f"Skipping invalid image file: {filename}")
                                                         continue
 
-                                                    # Check format
-                                                    format_str = test_img.format()
-                                                    if format_str not in [QImage.Format_RGB32, QImage.Format_ARGB32,
-                                                                         QImage.Format_RGB888, QImage.Format_RGBA8888]:
-                                                        # Still valid, just needs conversion
-                                                        pass
+                                                    # Log successful load
+                                                    if self.debug_checkbox.isChecked():
+                                                        self.log_error(f"Successfully loaded {filename}: "
+                                                                     f"{test_img.width()}x{test_img.height()}")
                                                 except Exception as e:
                                                     if self.debug_checkbox.isChecked():
                                                         self.log_error(
@@ -1247,8 +1251,15 @@ class BackgroundRemover(QDockWidget):
                                                 continue  # Skip if layer creation fails
 
                                             # Load mask image
+                                            if self.debug_checkbox.isChecked():
+                                                self.log_error(f"Loading mask from: {mask_file}")
+
                                             mask_image = QImage(mask_file)
                                             if not mask_image.isNull():
+                                                if self.debug_checkbox.isChecked():
+                                                    self.log_error(
+                                                        f"Mask loaded successfully: "
+                                                        f"{mask_image.width()}x{mask_image.height()}")
                                                 # Convert image data to bytes
                                                 ptr = mask_image.constBits()
                                                 ptr.setsize(mask_image.byteCount())
@@ -1270,6 +1281,9 @@ class BackgroundRemover(QDockWidget):
 
                                                 if self.debug_checkbox.isChecked():
                                                     self.log_error(f"Added mask: {filename}")
+                                            else:
+                                                if self.debug_checkbox.isChecked():
+                                                    self.log_error(f"Failed to load mask image: {mask_file}")
                                 except zipfile.BadZipFile:
                                     # Not a ZIP file, try as single image
                                     if self.debug_checkbox.isChecked():
