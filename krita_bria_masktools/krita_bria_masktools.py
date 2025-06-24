@@ -281,24 +281,49 @@ class BackgroundRemover(QDockWidget):
 
     def detect_mask(self, document, node):
         """Detect mask from various sources in priority order"""
-        # 1. Check for explicit transparency mask
+        # 1. Check for any mask attached to the current layer
         if node.childNodes():
             for child in node.childNodes():
-                if child.type() == "transparencymask":
-                    return child, "transparency_mask"
+                if child.type() in ["transparencymask", "filtermask", "transformmask",
+                                   "selectionmask", "colorizemask"]:
+                    return child, f"{child.type()}"
 
-        # 2. Check for paint layer named 'Mask Layer'
-        root = document.rootNode()
-        for layer in root.childNodes():
-            if layer.type() == "paintlayer" and layer.name().lower() == "mask layer":
-                return layer, "mask_layer"
-
-        # 3. Check for active selection
+        # 2. Check for active selection
         selection = document.selection()
         if selection is not None:
             # Check if selection has valid dimensions
             if selection.width() > 0 and selection.height() > 0:
                 return selection, "selection"
+
+        # 3. Check if there's another selected layer that could be used as mask
+        # (user can select multiple layers - one for image, one for mask)
+        window = Krita.instance().activeWindow()
+        if window and window.activeView():
+            selected_nodes = window.activeView().selectedNodes()
+            if len(selected_nodes) > 1:
+                # Find a layer that's not the current node
+                for selected in selected_nodes:
+                    if selected != node:
+                        # Any layer can be used as a mask
+                        return selected, "selected_layer"
+
+        # 4. Check for any layer with "mask" in the name (case insensitive)
+        root = document.rootNode()
+        mask_candidates = []
+
+        def find_mask_layers(parent):
+            for layer in parent.childNodes():
+                if "mask" in layer.name().lower():
+                    mask_candidates.append(layer)
+                # Recursively check groups
+                if layer.type() == "grouplayer":
+                    find_mask_layers(layer)
+
+        find_mask_layers(root)
+
+        # Return the most recently created mask layer (usually last in list)
+        if mask_candidates:
+            return mask_candidates[-1], "named_mask_layer"
 
         return None, None
 
@@ -382,7 +407,12 @@ class BackgroundRemover(QDockWidget):
             if mode == 1:  # Remove Background with Mask
                 mask, mask_type = self.detect_mask(document, nodes[0])
                 if not mask:
-                    self.status_label.setText("Please create a selection or mask layer before proceeding.")
+                    self.status_label.setText(
+                        "No mask found. Please:\n"
+                        "• Create a selection, or\n"
+                        "• Add a mask to your layer, or\n"
+                        "• Select both image and mask layers, or\n"
+                        "• Create a layer with 'mask' in its name")
                     progress.close()
                     return
 
@@ -677,7 +707,9 @@ class BackgroundRemover(QDockWidget):
         # Detect mask
         mask, mask_type = self.detect_mask(document, node)
         if not mask:
-            return "Error: No mask detected. Please create a selection or mask layer."
+            return ("Error: No mask detected. Try: creating a selection, "
+                    "adding a mask to your layer, selecting multiple layers, "
+                    "or naming a layer with 'mask' in it.")
 
         # Prepare temporary files
         temp_dir = tempfile.gettempdir()

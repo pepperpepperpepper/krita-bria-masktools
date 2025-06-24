@@ -13,9 +13,10 @@ A comprehensive Krita plugin for AI-powered masking operations using BriaAI's AP
 ## Key Features
 
 - **Smart Mask Detection**: Automatically detects and uses:
-  - Transparency masks
-  - Paint layers named "Mask Layer"
+  - Any mask type attached to your layer (transparency, filter, selection, etc.)
   - Active selections
+  - Multiple selected layers (select both image and mask layers)
+  - Any layer with "mask" in its name
 - **Batch Processing**: Process multiple layers at once (available for Remove Background and Generate Mask modes)
 - **Settings Dialog**: Secure API key storage via Krita's menu system
 - **Advanced Options**: Control threading and enable debug mode
@@ -45,7 +46,11 @@ A comprehensive Krita plugin for AI-powered masking operations using BriaAI's AP
 4. Result appears as new "Cutout" layer
 
 ### Remove Background with Mask
-1. Create a selection or mask layer
+1. Provide a mask using one of these methods:
+   - Create a selection with any selection tool, or
+   - Add a mask to your layer (any mask type), or
+   - Select two layers: your image and a mask layer, or
+   - Create any layer with "mask" in its name
 2. Choose "Remove Background with Mask" mode
 3. Click "Remove"
 4. Result appears as new "Masked" layer
