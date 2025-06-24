@@ -377,10 +377,7 @@ class BackgroundRemover(QDockWidget):
                 self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
                 progress.close()
                 # Re-enable UI
-                self.action_button.setEnabled(True)
-                self.batch_checkbox.setEnabled(True)
-                for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
-                    button.setEnabled(True)
+                self.enable_ui()
                 return
 
             # Basic API key validation
@@ -388,10 +385,7 @@ class BackgroundRemover(QDockWidget):
                 self.status_label.setText("Error: API key appears too short. Please check your API key.")
                 progress.close()
                 # Re-enable UI
-                self.action_button.setEnabled(True)
-                self.batch_checkbox.setEnabled(True)
-                for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
-                    button.setEnabled(True)
+                self.enable_ui()
                 return
 
             # Log API key info in debug mode
@@ -408,23 +402,27 @@ class BackgroundRemover(QDockWidget):
             if not document:
                 self.status_label.setText("No active document")
                 progress.close()
+                self.enable_ui()
                 return
 
             if not window:
                 self.status_label.setText("No active window")
                 progress.close()
+                self.enable_ui()
                 return
 
             view = window.activeView()
             if not view:
                 self.status_label.setText("No active view")
                 progress.close()
+                self.enable_ui()
                 return
 
             nodes = [document.activeNode()] if not self.batch_checkbox.isChecked() else view.selectedNodes()
             if not nodes:
                 self.status_label.setText("No active layer or no layers selected")
                 progress.close()
+                self.enable_ui()
                 return
 
             # For Remove Background with Mask mode, validate mask availability
@@ -437,6 +435,7 @@ class BackgroundRemover(QDockWidget):
                         "• Add a mask to your layer, or\n"
                         "• Select both image and mask layers")
                     progress.close()
+                    self.enable_ui()
                     return
 
             # Check if we're on a Unix-like system (macOS or Linux)
@@ -455,6 +454,7 @@ class BackgroundRemover(QDockWidget):
             except Exception as e:
                 self.status_label.setText(f"Error creating SSL context: {str(e)}")
                 progress.close()
+                self.enable_ui()
                 return
 
             # Setup for error handling
@@ -518,10 +518,7 @@ class BackgroundRemover(QDockWidget):
             progress.close()
 
             # Re-enable UI after processing
-            self.action_button.setEnabled(True)
-            self.batch_checkbox.setEnabled(True)
-            for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
-                button.setEnabled(True)
+            self.enable_ui()
         except Exception as e:
             import traceback
             error_msg = f"ERROR in remove_background: {str(e)}\n{traceback.format_exc()}"
@@ -532,10 +529,7 @@ class BackgroundRemover(QDockWidget):
                 pass
 
             # Re-enable UI after error
-            self.action_button.setEnabled(True)
-            self.batch_checkbox.setEnabled(True)
-            for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
-                button.setEnabled(True)
+            self.enable_ui()
 
     def process_node(self, node, api_key, document, context, mode):
         """Process node based on selected mode"""
@@ -1189,6 +1183,13 @@ class BackgroundRemover(QDockWidget):
             self.api_key_status.setStyleSheet("QLabel { color: red; font-weight: bold; }")
         if hasattr(self, 'api_key_input'):
             self.api_key_input.setStyleSheet("QLineEdit { border: 2px solid red; }")
+    
+    def enable_ui(self):
+        """Re-enable all UI elements after processing"""
+        self.action_button.setEnabled(True)
+        self.batch_checkbox.setEnabled(True)
+        for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
+            button.setEnabled(True)
 
     def canvasChanged(self, canvas):
         pass
