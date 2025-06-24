@@ -359,7 +359,7 @@ class BackgroundRemover(QDockWidget):
             self.status_label.setText("Preparing file(s) and request(s)...")
 
             # Disable UI during processing to prevent re-entrancy issues
-            self.remove_button.setEnabled(False)
+            self.remove_bg_button.setEnabled(False)
             self.batch_checkbox.setEnabled(False)
             self.mode_button_group.setExclusive(False)
             for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
@@ -377,7 +377,7 @@ class BackgroundRemover(QDockWidget):
                 self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
                 progress.close()
                 # Re-enable UI
-                self.remove_button.setEnabled(True)
+                self.remove_bg_button.setEnabled(True)
                 self.batch_checkbox.setEnabled(True)
                 for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                     button.setEnabled(True)
@@ -388,7 +388,7 @@ class BackgroundRemover(QDockWidget):
                 self.status_label.setText("Error: API key appears too short. Please check your API key.")
                 progress.close()
                 # Re-enable UI
-                self.remove_button.setEnabled(True)
+                self.remove_bg_button.setEnabled(True)
                 self.batch_checkbox.setEnabled(True)
                 for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                     button.setEnabled(True)
@@ -518,7 +518,7 @@ class BackgroundRemover(QDockWidget):
             progress.close()
 
             # Re-enable UI after processing
-            self.remove_button.setEnabled(True)
+            self.remove_bg_button.setEnabled(True)
             self.batch_checkbox.setEnabled(True)
             for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                 button.setEnabled(True)
@@ -532,7 +532,7 @@ class BackgroundRemover(QDockWidget):
                 pass
 
             # Re-enable UI after error
-            self.remove_button.setEnabled(True)
+            self.remove_bg_button.setEnabled(True)
             self.batch_checkbox.setEnabled(True)
             for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                 button.setEnabled(True)
