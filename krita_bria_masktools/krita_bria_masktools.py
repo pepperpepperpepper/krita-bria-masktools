@@ -1081,25 +1081,27 @@ class BackgroundRemover(QDockWidget):
                             except json.JSONDecodeError:
                                 return "Error: Invalid JSON response from server"
 
-                            # Check for objects_masks URL (ZIP file)
+                            # Check for different response formats
                             objects_masks_url = response_data.get('objects_masks')
+                            masks_list = response_data.get('masks', [])
                             
                             if self.debug_checkbox.isChecked():
                                 self.log_error(f"Response data: {response_data}")
                             
+                            mask_count = 0
+                            
                             if objects_masks_url:
-                                # Download the ZIP file
-                                zip_file = os.path.join(temp_dir, f"masks_{unique_id}.zip")
+                                # Download the file (could be ZIP or image)
+                                download_file = os.path.join(temp_dir, f"masks_{unique_id}_download")
                                 try:
-                                    urllib.request.urlretrieve(objects_masks_url, zip_file)
+                                    urllib.request.urlretrieve(objects_masks_url, download_file)
                                 except Exception as e:
-                                    return f"Error downloading masks ZIP: {str(e)}"
+                                    return f"Error downloading masks file: {str(e)}"
                                 
-                                # Extract masks from ZIP
-                                mask_count = 0
-                                
+                                # Check if it's a ZIP file or an image
                                 try:
-                                    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                                    # Try to open as ZIP first
+                                    with zipfile.ZipFile(download_file, 'r') as zip_ref:
                                         # Extract all files to temp directory
                                         extract_dir = os.path.join(temp_dir, f"masks_{unique_id}_extracted")
                                         zip_ref.extractall(extract_dir)
@@ -1130,14 +1132,41 @@ class BackgroundRemover(QDockWidget):
                                                     
                                                     if self.debug_checkbox.isChecked():
                                                         self.log_error(f"Added mask: {filename}")
+                                except zipfile.BadZipFile:
+                                    # Not a ZIP file, try as single image
+                                    if self.debug_checkbox.isChecked():
+                                        self.log_error("File is not a ZIP, trying as single image")
+                                    
+                                    # Try to load as image
+                                    mask_image = QImage(download_file)
+                                    if not mask_image.isNull():
+                                        # Create single transparency mask
+                                        mask_layer = document.createNode("Generated Mask", "transparencymask")
+                                        if mask_layer:
+                                            # Convert image data to bytes
+                                            ptr = mask_image.constBits()
+                                            ptr.setsize(mask_image.byteCount())
+                                            mask_layer.setPixelData(bytes(ptr), 0, 0,
+                                                                  mask_image.width(), mask_image.height())
+                                            
+                                            # Add as child of the node
+                                            node.addChildNode(mask_layer, None)
+                                            mask_count = 1
+                                    
+                                    # Cleanup
+                                    if not self.debug_checkbox.isChecked():
+                                        try:
+                                            os.remove(download_file)
+                                        except Exception:
+                                            pass
                                 except Exception as e:
-                                    return f"Error processing ZIP file: {str(e)}"
+                                    return f"Error processing file: {str(e)}"
                                 finally:
                                     # Cleanup ZIP and extracted files
                                     if not self.debug_checkbox.isChecked():
                                         try:
                                             shutil.rmtree(extract_dir)
-                                            os.remove(zip_file)
+                                            os.remove(download_file)
                                         except Exception:
                                             pass
                                 
@@ -1149,8 +1178,57 @@ class BackgroundRemover(QDockWidget):
                                     return f"Generated {mask_count} masks for {node.name()}"
                                 else:
                                     return "Error: No valid masks found in ZIP file"
+                            elif masks_list and isinstance(masks_list, list):
+                                # Handle individual mask URLs
+                                for idx, mask_url in enumerate(masks_list):
+                                    if not mask_url or not isinstance(mask_url, str):
+                                        continue
+                                    
+                                    # Download mask
+                                    mask_file = os.path.join(temp_dir, f"mask_{unique_id}_{idx}.png")
+                                    try:
+                                        urllib.request.urlretrieve(mask_url, mask_file)
+                                    except Exception as e:
+                                        if self.debug_checkbox.isChecked():
+                                            self.log_error(f"Failed to download mask {idx}: {str(e)}")
+                                        continue
+                                    
+                                    # Create transparency mask
+                                    mask_name = f"Mask {idx + 1}"
+                                    mask_layer = document.createNode(mask_name, "transparencymask")
+                                    if not mask_layer:
+                                        continue
+                                    
+                                    # Load mask image
+                                    mask_image = QImage(mask_file)
+                                    if not mask_image.isNull():
+                                        # Convert image data to bytes
+                                        ptr = mask_image.constBits()
+                                        ptr.setsize(mask_image.byteCount())
+                                        mask_layer.setPixelData(bytes(ptr), 0, 0,
+                                                              mask_image.width(), mask_image.height())
+                                        
+                                        # Add as child of the node
+                                        node.addChildNode(mask_layer, None)
+                                        mask_count += 1
+                                    
+                                    # Cleanup
+                                    if not self.debug_checkbox.isChecked():
+                                        try:
+                                            os.remove(mask_file)
+                                        except Exception:
+                                            pass
+                                
+                                if mask_count > 0:
+                                    try:
+                                        document.refreshProjection()
+                                    except Exception:
+                                        pass
+                                    return f"Generated {mask_count} masks for {node.name()}"
+                                else:
+                                    return "Error: Failed to process any masks"
                             else:
-                                return "Error: No masks generated"
+                                return "Error: No masks data in response"
                         else:
                             return self.handle_error(response.status)
 
