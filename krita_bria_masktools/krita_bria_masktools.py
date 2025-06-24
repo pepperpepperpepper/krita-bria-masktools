@@ -492,15 +492,11 @@ class BackgroundRemover(QDockWidget):
     
     def process_background_removal(self, node, api_key, document, context):
         """Process standard background removal"""
-        print("DEBUG: process_background_removal started")
-        
         # Prepare the temporary file path
         temp_dir = tempfile.gettempdir()
         unique_id = str(uuid.uuid4())[:8]
         temp_file = os.path.join(temp_dir, f"temp_layer_{unique_id}.jpg")
         result_file = None
-        
-        print(f"DEBUG: temp_file will be: {temp_file}")
 
         # Create an InfoObject for export configuration
         export_params = InfoObject()
@@ -512,21 +508,9 @@ class BackgroundRemover(QDockWidget):
 
         # Save the active node as JPG
         try:
-            print("DEBUG: Getting node bounds")
-            node_bounds = node.bounds()
-            print(f"DEBUG: Node bounds: x={node_bounds.x()}, y={node_bounds.y()}, w={node_bounds.width()}, h={node_bounds.height()}")
-            
-            if not node_bounds or node_bounds.width() <= 0 or node_bounds.height() <= 0:
-                return "Error: Invalid layer bounds"
-            
-            print("DEBUG: Saving node to temp file")
-            if not node.save(temp_file, 1.0, 1.0, export_params, node_bounds):
-                return "Error: Failed to export image for processing"
-            print("DEBUG: Node saved successfully")
+            # Simply save without checking return value like the original
+            node.save(temp_file, 1.0, 1.0, export_params, node.bounds())
         except Exception as e:
-            print(f"DEBUG: Exception during save: {e}")
-            import traceback
-            traceback.print_exc()
             return f"Error exporting image: {str(e)}"
 
         # Prepare the API request
@@ -637,10 +621,8 @@ class BackgroundRemover(QDockWidget):
                             if image.width() <= 0 or image.height() <= 0:
                                 return "Error: Invalid image dimensions"
                             
-                            # Convert image data to bytes
-                            ptr = image.constBits()
-                            ptr.setsize(image.byteCount())
-                            new_layer.setPixelData(bytes(ptr), 0, 0, image.width(), image.height())
+                            # Load the image data into the layer
+                            new_layer.setPixelData(image.constBits().asstring(image.byteCount()), 0, 0, image.width(), image.height())
                             
                             document.rootNode().addChildNode(new_layer, node)
                             result = f"Background removed successfully for {node.name()}"
