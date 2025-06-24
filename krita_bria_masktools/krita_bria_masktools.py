@@ -1041,24 +1041,37 @@ class BackgroundRemover(QDockWidget):
                 return f"Error exporting image: {str(e)}"
 
             # Prepare API request
-            # Note: The mask_generator endpoint might be under /objects/
+            # The mask_generator endpoint requires JSON format
             url = "https://engine.prod.bria-api.com/v1/objects/mask_generator"
-
-            # Prepare multipart form data
-            boundary = 'wL36Yn8afVp8Ag7AmP8qZ0SA4n1v9T'
-            data = []
-            data.append(f'--{boundary}'.encode())
-            data.append(b'Content-Disposition: form-data; name="file"; filename="image.jpg"')
-            data.append(b'Content-Type: image/jpeg')
-            data.append(b'')
-            with open(temp_file, 'rb') as f:
-                data.append(f.read())
-            data.append(f'--{boundary}--'.encode())
-            data.append(b'')
-            body = b'\r\n'.join(data)
-
+            
+            # First, we need to upload the image somewhere accessible
+            # For now, we'll use a temporary file hosting service
+            # In production, you might want to use your own image hosting
+            
+            # Upload to 0x0.st (temporary file hosting)
+            try:
+                upload_cmd = f'curl -F "file=@{temp_file}" https://0x0.st'
+                result = subprocess.run(upload_cmd, shell=True, capture_output=True, text=True)
+                if result.returncode != 0:
+                    return f"Error uploading image: {result.stderr}"
+                image_url = result.stdout.strip()
+                
+                if self.debug_checkbox.isChecked():
+                    self.log_error(f"Uploaded image to: {image_url}")
+            except Exception as e:
+                return f"Error uploading image: {str(e)}"
+            
+            # Prepare JSON request
+            request_data = {
+                "image_url": image_url,
+                "content_moderation": False,
+                "sync": True
+            }
+            
+            body = json.dumps(request_data).encode('utf-8')
+            
             headers = {
-                'Content-Type': f'multipart/form-data; boundary={boundary}',
+                'Content-Type': 'application/json',
                 'api_token': api_key,
                 'User-Agent': 'Krita-Bria-MaskTools/1.0'
             }
