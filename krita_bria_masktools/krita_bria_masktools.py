@@ -743,6 +743,15 @@ class BackgroundRemover(QDockWidget):
         if not mask:
             return ("Error: No mask detected. Try: creating a selection, "
                     "adding a mask to your layer, or selecting multiple layers.")
+        
+        # Log mask detection if debug mode
+        if self.debug_checkbox.isChecked():
+            self.log_error(f"Detected mask type: {mask_type}")
+            if hasattr(mask, 'name'):
+                self.log_error(f"Mask name: {mask.name()}")
+            if hasattr(mask, 'bounds'):
+                bounds = mask.bounds()
+                self.log_error(f"Mask bounds: {bounds.x()}, {bounds.y()}, {bounds.width()}, {bounds.height()}")
 
         # Prepare temporary files
         temp_dir = tempfile.gettempdir()
@@ -758,8 +767,8 @@ class BackgroundRemover(QDockWidget):
             export_params.setProperty("compression", 6)
             export_params.setProperty("indexed", False)
             try:
-                if not node.save(temp_image_file, 1.0, 1.0, export_params, node.bounds()):
-                    return "Error: Failed to export image for processing"
+                # Simply save without checking return value like the original
+                node.save(temp_image_file, 1.0, 1.0, export_params, node.bounds())
             except Exception as e:
                 return f"Error exporting image: {str(e)}"
 
@@ -813,8 +822,8 @@ class BackgroundRemover(QDockWidget):
             else:
                 # Export mask layer/transparency mask
                 try:
-                    if not mask.save(temp_mask_file, 1.0, 1.0, export_params, mask.bounds()):
-                        return "Error: Failed to export mask for processing"
+                    # Simply save without checking return value like the original
+                    mask.save(temp_mask_file, 1.0, 1.0, export_params, mask.bounds())
                 except Exception as e:
                     return f"Error exporting mask: {str(e)}"
 
@@ -988,8 +997,8 @@ class BackgroundRemover(QDockWidget):
             export_params.setProperty("forceSRGB", True)
             export_params.setProperty("alpha", False)
             try:
-                if not node.save(temp_file, 1.0, 1.0, export_params, node.bounds()):
-                    return "Error: Failed to export image for processing"
+                # Simply save without checking return value like the original
+                node.save(temp_file, 1.0, 1.0, export_params, node.bounds())
             except Exception as e:
                 return f"Error exporting image: {str(e)}"
 
