@@ -100,6 +100,11 @@ class BackgroundRemover(QDockWidget):
             self.api_key_input.textChanged.connect(lambda text: self.save_api_key(text))
             api_key_layout.addWidget(self.api_key_input)
 
+            # API key status label
+            self.api_key_status = QLabel("")
+            self.api_key_status.setWordWrap(True)
+            api_key_layout.addWidget(self.api_key_status)
+
             layout.addWidget(api_key_group)
 
             # Store API key internally (loaded from settings)
@@ -278,6 +283,12 @@ class BackgroundRemover(QDockWidget):
         app.writeSetting("AGD_BriaAI", "api_key", key)
         self.api_key = key
         self.status_label.setText("API Key saved")
+        # Clear any API key error status
+        if hasattr(self, 'api_key_status'):
+            self.api_key_status.setText("")
+            self.api_key_status.setStyleSheet("")
+        if hasattr(self, 'api_key_input'):
+            self.api_key_input.setStyleSheet("")  # Reset to default style
 
     def detect_mask(self, document, node):
         """Detect mask from various sources in priority order"""
@@ -686,12 +697,20 @@ class BackgroundRemover(QDockWidget):
 
             # Special handling for 401 errors
             if e.code == 401:
-                error_msg = (f"Authentication failed. Please check your API key.\n"
-                           f"Details: {error_body}\n\n"
-                           f"To get a valid API key:\n"
-                           f"1. Go to https://www.bria.ai\n"
-                           f"2. Sign up for a free account\n"
-                           f"3. Copy your API key from the dashboard")
+                error_msg = ("❌ INVALID API KEY ❌\n\n"
+                           "Your API key was rejected by BriaAI.\n\n"
+                           "Please check:\n"
+                           "• You've entered the correct API key\n"
+                           "• No extra spaces or quotes in the key\n"
+                           "• The key hasn't expired\n\n"
+                           "To get a valid API key:\n"
+                           "1. Go to https://www.bria.ai\n"
+                           "2. Sign up for a free account (no credit card)\n"
+                           "3. Copy your API key from the dashboard\n"
+                           "4. Paste it in the API Key field above\n\n"
+                           f"Error details: {error_body}")
+                # Highlight the API key field with error
+                self.highlight_invalid_api_key()
             else:
                 error_msg = f"{self.handle_error(e.code)} - Details: {error_body}"
 
@@ -910,12 +929,38 @@ class BackgroundRemover(QDockWidget):
                     error_body = ""
                     try:
                         error_body = e.read().decode('utf-8')
+                        # Try to parse as JSON for better formatting
+                        try:
+                            error_json = json.loads(error_body)
+                            error_body = json.dumps(error_json, indent=2)
+                        except:
+                            pass
                     except:
                         pass
+
+                    # Special handling for 401 errors
+                    if e.code == 401:
+                        error_msg = ("❌ INVALID API KEY ❌\n\n"
+                                   "Your API key was rejected by BriaAI.\n\n"
+                                   "Please check:\n"
+                                   "• You've entered the correct API key\n"
+                                   "• No extra spaces or quotes in the key\n"
+                                   "• The key hasn't expired\n\n"
+                                   "To get a valid API key:\n"
+                                   "1. Go to https://www.bria.ai\n"
+                                   "2. Sign up for a free account (no credit card)\n"
+                                   "3. Copy your API key from the dashboard\n"
+                                   "4. Paste it in the API Key field above\n\n"
+                                   f"Error details: {error_body}")
+                        # Highlight the API key field with error
+                        self.highlight_invalid_api_key()
+                    else:
+                        error_msg = f"{self.handle_error(e.code)} - Details: {error_body}"
+
                     self.log_error(f"HTTPError in masked removal: {e.code}")
                     self.log_error(f"URL: {url}")
                     self.log_error(f"Error body: {error_body}")
-                    return f"{self.handle_error(e.code)} - Details: {error_body}"
+                    return error_msg
                 except Exception as e:
                     if attempt == 0:
                         self.log_error(f"First attempt error: {str(e)}")
@@ -1056,12 +1101,38 @@ class BackgroundRemover(QDockWidget):
                     error_body = ""
                     try:
                         error_body = e.read().decode('utf-8')
+                        # Try to parse as JSON for better formatting
+                        try:
+                            error_json = json.loads(error_body)
+                            error_body = json.dumps(error_json, indent=2)
+                        except:
+                            pass
                     except:
                         pass
+
+                    # Special handling for 401 errors
+                    if e.code == 401:
+                        error_msg = ("❌ INVALID API KEY ❌\n\n"
+                                   "Your API key was rejected by BriaAI.\n\n"
+                                   "Please check:\n"
+                                   "• You've entered the correct API key\n"
+                                   "• No extra spaces or quotes in the key\n"
+                                   "• The key hasn't expired\n\n"
+                                   "To get a valid API key:\n"
+                                   "1. Go to https://www.bria.ai\n"
+                                   "2. Sign up for a free account (no credit card)\n"
+                                   "3. Copy your API key from the dashboard\n"
+                                   "4. Paste it in the API Key field above\n\n"
+                                   f"Error details: {error_body}")
+                        # Highlight the API key field with error
+                        self.highlight_invalid_api_key()
+                    else:
+                        error_msg = f"{self.handle_error(e.code)} - Details: {error_body}"
+
                     self.log_error(f"HTTPError in mask generation: {e.code}")
                     self.log_error(f"URL: {url}")
                     self.log_error(f"Error body: {error_body}")
-                    return f"{self.handle_error(e.code)} - Details: {error_body}"
+                    return error_msg
                 except Exception as e:
                     if attempt == 0:
                         self.log_error(f"First attempt error in mask generation: {str(e)}")
@@ -1110,6 +1181,14 @@ class BackgroundRemover(QDockWidget):
         # Also append to status label if in debug mode
         if hasattr(self, 'debug_checkbox') and self.debug_checkbox.isChecked():
             self.status_label.append(f"ERROR: {message}")
+
+    def highlight_invalid_api_key(self):
+        """Highlight the API key field when it's invalid"""
+        if hasattr(self, 'api_key_status'):
+            self.api_key_status.setText("⚠️ Invalid API Key - Please check and re-enter")
+            self.api_key_status.setStyleSheet("QLabel { color: red; font-weight: bold; }")
+        if hasattr(self, 'api_key_input'):
+            self.api_key_input.setStyleSheet("QLineEdit { border: 2px solid red; }")
 
     def canvasChanged(self, canvas):
         pass
