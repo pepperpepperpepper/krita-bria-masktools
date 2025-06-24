@@ -767,8 +767,26 @@ class BackgroundRemover(QDockWidget):
             export_params.setProperty("compression", 6)
             export_params.setProperty("indexed", False)
             try:
+                # Log export attempt if debug mode
+                if self.debug_checkbox.isChecked():
+                    self.log_error(f"Exporting image to: {temp_image_file}")
+                    bounds = node.bounds()
+                    self.log_error(f"Node bounds: {bounds.x()}, {bounds.y()}, {bounds.width()}, {bounds.height()}")
+                
                 # Simply save without checking return value like the original
                 node.save(temp_image_file, 1.0, 1.0, export_params, node.bounds())
+                
+                # Verify file was created
+                if not os.path.exists(temp_image_file):
+                    return "Error: Export file was not created"
+                
+                file_size = os.path.getsize(temp_image_file)
+                if file_size == 0:
+                    return "Error: Export file is empty"
+                    
+                if self.debug_checkbox.isChecked():
+                    self.log_error(f"Export successful, file size: {file_size} bytes")
+                    
             except Exception as e:
                 return f"Error exporting image: {str(e)}"
 
@@ -997,13 +1015,32 @@ class BackgroundRemover(QDockWidget):
             export_params.setProperty("forceSRGB", True)
             export_params.setProperty("alpha", False)
             try:
+                # Log export attempt if debug mode
+                if self.debug_checkbox.isChecked():
+                    self.log_error(f"Exporting image to: {temp_file}")
+                    bounds = node.bounds()
+                    self.log_error(f"Node bounds: {bounds.x()}, {bounds.y()}, {bounds.width()}, {bounds.height()}")
+                
                 # Simply save without checking return value like the original
                 node.save(temp_file, 1.0, 1.0, export_params, node.bounds())
+                
+                # Verify file was created
+                if not os.path.exists(temp_file):
+                    return "Error: Export file was not created"
+                
+                file_size = os.path.getsize(temp_file)
+                if file_size == 0:
+                    return "Error: Export file is empty"
+                    
+                if self.debug_checkbox.isChecked():
+                    self.log_error(f"Export successful, file size: {file_size} bytes")
+                    
             except Exception as e:
                 return f"Error exporting image: {str(e)}"
 
             # Prepare API request
-            url = "https://engine.prod.bria-api.com/v1/mask_generator"
+            # Note: The mask_generator endpoint might be under /objects/
+            url = "https://engine.prod.bria-api.com/v1/objects/mask_generator"
 
             # Prepare multipart form data
             boundary = 'wL36Yn8afVp8Ag7AmP8qZ0SA4n1v9T'
