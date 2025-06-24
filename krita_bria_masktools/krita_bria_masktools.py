@@ -12,6 +12,7 @@ import subprocess
 import uuid
 import zipfile
 import shutil
+import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import krita
@@ -1041,29 +1042,23 @@ class BackgroundRemover(QDockWidget):
                 return f"Error exporting image: {str(e)}"
 
             # Prepare API request
-            # The mask_generator endpoint requires JSON format
+            # The mask_generator endpoint requires JSON format with base64-encoded file
             url = "https://engine.prod.bria-api.com/v1/objects/mask_generator"
             
-            # First, we need to upload the image somewhere accessible
-            # For now, we'll use a temporary file hosting service
-            # In production, you might want to use your own image hosting
-            
-            # Upload to 0x0.st (temporary file hosting)
+            # Read and encode the image file as base64
             try:
-                upload_cmd = f'curl -F "file=@{temp_file}" https://0x0.st'
-                result = subprocess.run(upload_cmd, shell=True, capture_output=True, text=True)
-                if result.returncode != 0:
-                    return f"Error uploading image: {result.stderr}"
-                image_url = result.stdout.strip()
+                with open(temp_file, 'rb') as f:
+                    file_data = f.read()
+                    encoded_file = base64.b64encode(file_data).decode('utf-8')
                 
                 if self.debug_checkbox.isChecked():
-                    self.log_error(f"Uploaded image to: {image_url}")
+                    self.log_error(f"Encoded file size: {len(encoded_file)} bytes")
             except Exception as e:
-                return f"Error uploading image: {str(e)}"
+                return f"Error encoding image: {str(e)}"
             
-            # Prepare JSON request
+            # Prepare JSON request with base64-encoded file
             request_data = {
-                "image_url": image_url,
+                "file": encoded_file,
                 "content_moderation": False,
                 "sync": True
             }
