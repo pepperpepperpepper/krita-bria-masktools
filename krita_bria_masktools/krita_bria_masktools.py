@@ -1004,17 +1004,8 @@ class BackgroundRemoverExtension(krita.Extension):
         self.actions.append(action)
         
         # Create actions for hotkeys only - not in menus
-        remove_bg_action = window.createAction("bria_remove_background", "Bria: Remove Background")
-        remove_bg_action.triggered.connect(lambda: self.execute_mode(0))
-        self.actions.append(remove_bg_action)
-        
-        remove_mask_action = window.createAction("bria_remove_with_mask", "Bria: Remove Background with Mask")
-        remove_mask_action.triggered.connect(lambda: self.execute_mode(1))
-        self.actions.append(remove_mask_action)
-        
-        generate_mask_action = window.createAction("bria_generate_masks", "Bria: Generate Masks")
-        generate_mask_action.triggered.connect(lambda: self.execute_mode(2))
-        self.actions.append(generate_mask_action)
+        # Note: These actions have no menu path, so they won't appear in any menu
+        # but can still be assigned hotkeys in Settings → Configure Krita → Keyboard Shortcuts
         
         # Create the main script action
         main_action = window.createAction("bria_mask_tools", "Bria Mask Tools", "Tools/Scripts")
@@ -1060,35 +1051,9 @@ class BackgroundRemoverExtension(krita.Extension):
                 
         return None
     
-    def execute_mode(self, mode):
-        """Execute a specific mode from hotkey"""
-        docker = self.find_docker()
-        if docker:
-            # Set the mode
-            if mode == 0:
-                docker.remove_bg_radio.setChecked(True)
-            elif mode == 1:
-                docker.remove_bg_mask_radio.setChecked(True)
-            elif mode == 2:
-                docker.generate_mask_radio.setChecked(True)
-            
-            # Trigger the mode change handler
-            docker.on_mode_changed()
-            
-            # Execute the action
-            docker.remove_background()
-        else:
-            # Show message if docker not found
-            QMessageBox.warning(None, "Bria Mask Tools", 
-                              "Please enable the Bria Mask Tools docker first.\n" +
-                              "Go to Settings → Dockers → Bria Mask Tools")
+    # Removed execute_mode since we're not using hotkey actions anymore
     
-    def toggle_batch_mode(self):
-        """Toggle batch mode from hotkey"""
-        docker = self.find_docker()
-        if docker:
-            docker.batch_checkbox.setChecked(not docker.batch_checkbox.isChecked())
-            docker.toggle_batch_mode()
+    # Removed toggle_batch_mode since we're not using hotkey actions anymore
     
     def toggle_docker(self):
         """Toggle the visibility of the Bria Mask Tools docker"""
