@@ -310,149 +310,169 @@ class BackgroundRemover(QDockWidget):
             self.status_label.setText("API key updated successfully")
     
     def remove_background(self):
-        start_time = time.time()
-        
-        # Get selected mode
-        mode = self.mode_button_group.checkedId()
-        mode_names = ["Remove Background", "Remove Background with Mask", "Generate Mask"]
-        mode_name = mode_names[mode]
+        try:
+            # Debug output
+            print("DEBUG: remove_background called")
+            self.status_label.setText("DEBUG: Button clicked, starting process...")
+            
+            start_time = time.time()
+            
+            # Get selected mode
+            mode = self.mode_button_group.checkedId()
+            print(f"DEBUG: Selected mode: {mode}")
+            mode_names = ["Remove Background", "Remove Background with Mask", "Generate Mask"]
+            mode_name = mode_names[mode]
 
-        # Create a progress dialog
-        progress = QProgressDialog(f"{mode_name}...", "Cancel", 0, 100, Krita.instance().activeWindow().qwindow())
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-        progress.show()
+            # Create a progress dialog
+            try:
+                progress = QProgressDialog(f"{mode_name}...", "Cancel", 0, 100, Krita.instance().activeWindow().qwindow())
+                progress.setWindowModality(Qt.WindowModal)
+                progress.setMinimumDuration(0)
+                progress.setValue(0)
+                progress.show()
+            except Exception as e:
+                print(f"DEBUG: Error creating progress dialog: {e}")
+                self.status_label.setText(f"Error creating progress dialog: {e}")
+                return
 
-        # Clear the status_label field
-        self.status_label.setText("Preparing file(s) and request(s)...")
-        QApplication.processEvents()
+            # Clear the status_label field
+            self.status_label.setText("Preparing file(s) and request(s)...")
+            QApplication.processEvents()
 
-        # Get API key from input field
-        self.api_key = self.api_key_input.text().strip()
-        
-        # Check if API key is blank
-        if self.api_key == "":
-            self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
-            progress.close()
-            return
-        
-        # Debug: Show API key length (not the key itself for security)
-        self.status_label.append(f"Debug: API key length: {len(self.api_key)} characters")
+            # Get API key from input field
+            self.api_key = self.api_key_input.text().strip()
+            
+            # Check if API key is blank
+            if self.api_key == "":
+                self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
+                progress.close()
+                return
+            
+            # Debug: Show API key length (not the key itself for security)
+            self.status_label.append(f"Debug: API key length: {len(self.api_key)} characters")
 
-        application = Krita.instance()
-        document = application.activeDocument()
-        window = application.activeWindow()
+            application = Krita.instance()
+            document = application.activeDocument()
+            window = application.activeWindow()
 
-        if not document:
-            self.status_label.setText("No active document")
-            progress.close()
-            return
-
-        if not window:
-            self.status_label.setText("No active window")
-            progress.close()
-            return
-
-        view = window.activeView()
-        if not view:
-            self.status_label.setText("No active view")
-            progress.close()
-            return
-
-        nodes = [document.activeNode()] if not self.batch_checkbox.isChecked() else view.selectedNodes()
-        if not nodes:
-            self.status_label.setText("No active layer or no layers selected")
-            progress.close()
-            return
-        
-        # For Remove Background with Mask mode, validate mask availability
-        if mode == 1:  # Remove Background with Mask
-            mask, mask_type = self.detect_mask(document, nodes[0])
-            if not mask:
-                self.status_label.setText("Please create a selection or mask layer before proceeding.")
+            if not document:
+                self.status_label.setText("No active document")
                 progress.close()
                 return
 
-        # Check if we're on a Unix-like system (macOS or Linux)
-        if sys.platform.startswith('darwin') or sys.platform.startswith('linux'):
-            # Set the SSL certificate file path for macOS and Linux
-            cert_file = '/etc/ssl/cert.pem'
+            if not window:
+                self.status_label.setText("No active window")
+                progress.close()
+                return
+
+            view = window.activeView()
+            if not view:
+                self.status_label.setText("No active view")
+                progress.close()
+                return
+
+            nodes = [document.activeNode()] if not self.batch_checkbox.isChecked() else view.selectedNodes()
+            if not nodes:
+                self.status_label.setText("No active layer or no layers selected")
+                progress.close()
+                return
             
-            # Check if the certificate file exists
-            if os.path.exists(cert_file):
-                os.environ['SSL_CERT_FILE'] = cert_file
-            else:
-                self.status_label.setText(f"Warning: Certificate file {cert_file} not found.")
-                QApplication.processEvents()
+            # For Remove Background with Mask mode, validate mask availability
+            if mode == 1:  # Remove Background with Mask
+                mask, mask_type = self.detect_mask(document, nodes[0])
+                if not mask:
+                    self.status_label.setText("Please create a selection or mask layer before proceeding.")
+                    progress.close()
+                    return
+
+            # Check if we're on a Unix-like system (macOS or Linux)
+            if sys.platform.startswith('darwin') or sys.platform.startswith('linux'):
+                # Set the SSL certificate file path for macOS and Linux
+                cert_file = '/etc/ssl/cert.pem'
                 
-        try:
-            context = ssl.create_default_context()
-        except Exception as e:
-            self.status_label.setText(f"Error creating SSL context: {str(e)}")
-            progress.close()
-            return
-
-        # Setup for error handling
-        processed_count = 0
-        success_count = 0
-        total_count = len(nodes)
-        error_messages = []
-        
-        # Determine max_workers based on user selection
-        if self.advanced_checkbox.isChecked() and not self.auto_thread_checkbox.isChecked():
-            max_workers = self.thread_count_spinbox.value()
-        else:
-            max_workers = os.cpu_count() or multiprocessing.cpu_count()
-        
-        # Set batch mode
-        try:
-            document.setBatchmode(True)
-        except Exception as e:
-            # Continue anyway, batch mode is optional
-            pass
-
-        progress.setValue(10)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(self.process_node, node, self.api_key, document, context, mode) for node in nodes]
-
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                    processed_count += 1
-                    if "successfully" in result.lower():
-                        success_count += 1
-                    else:
-                        error_messages.append(result)
-                    self.status_label.append(f"Processed {processed_count}/{total_count}: {result}")
-                    progress.setValue(10 + int(90 * processed_count / total_count))
-                except Exception as e:
-                    processed_count += 1
-                    error_messages.append(f"Error: {str(e)}")
-                finally:
+                # Check if the certificate file exists
+                if os.path.exists(cert_file):
+                    os.environ['SSL_CERT_FILE'] = cert_file
+                else:
+                    self.status_label.setText(f"Warning: Certificate file {cert_file} not found.")
                     QApplication.processEvents()
+                    
+            try:
+                context = ssl.create_default_context()
+            except Exception as e:
+                self.status_label.setText(f"Error creating SSL context: {str(e)}")
+                progress.close()
+                return
 
-        # Unset batch mode
-        try:
-            document.setBatchmode(False)
-        except Exception:
-            pass
+            # Setup for error handling
+            processed_count = 0
+            success_count = 0
+            total_count = len(nodes)
+            error_messages = []
+            
+            # Determine max_workers based on user selection
+            if self.advanced_checkbox.isChecked() and not self.auto_thread_checkbox.isChecked():
+                max_workers = self.thread_count_spinbox.value()
+            else:
+                max_workers = os.cpu_count() or multiprocessing.cpu_count()
+            
+            # Set batch mode
+            try:
+                document.setBatchmode(True)
+            except Exception as e:
+                # Continue anyway, batch mode is optional
+                pass
 
-        # End timing the process
-        end_time = time.time()
+            progress.setValue(10)
 
-        # Calculate the total time taken in milliseconds
-        total_time_ms = int((end_time - start_time) * 1000)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(self.process_node, node, self.api_key, document, context, mode) for node in nodes]
 
-        # Final status update
-        final_status = f"Completed. Processed {success_count}/{total_count} successfully. ({total_time_ms}ms)"
-        if error_messages:
-            final_status += f"\nErrors:\n" + "\n".join(error_messages)
-        
-        self.status_label.setText(final_status)
-        progress.setValue(100)
-        progress.close()
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        processed_count += 1
+                        if "successfully" in result.lower():
+                            success_count += 1
+                        else:
+                            error_messages.append(result)
+                        self.status_label.append(f"Processed {processed_count}/{total_count}: {result}")
+                        progress.setValue(10 + int(90 * processed_count / total_count))
+                    except Exception as e:
+                        processed_count += 1
+                        error_messages.append(f"Error: {str(e)}")
+                    finally:
+                        QApplication.processEvents()
+
+            # Unset batch mode
+            try:
+                document.setBatchmode(False)
+            except Exception:
+                pass
+
+            # End timing the process
+            end_time = time.time()
+
+            # Calculate the total time taken in milliseconds
+            total_time_ms = int((end_time - start_time) * 1000)
+
+            # Final status update
+            final_status = f"Completed. Processed {success_count}/{total_count} successfully. ({total_time_ms}ms)"
+            if error_messages:
+                final_status += f"\nErrors:\n" + "\n".join(error_messages)
+            
+            self.status_label.setText(final_status)
+            progress.setValue(100)
+            progress.close()
+        except Exception as e:
+            import traceback
+            error_msg = f"ERROR in remove_background: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
+            self.status_label.setText(error_msg)
+            try:
+                progress.close()
+            except:
+                pass
 
     def process_node(self, node, api_key, document, context, mode):
         """Process node based on selected mode"""
