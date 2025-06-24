@@ -1107,7 +1107,14 @@ class BackgroundRemoverExtension(krita.Extension):
             QMessageBox.information(None, "Bria Mask Tools", 
                                   "Please enable the docker first:\nSettings → Dockers → Bria Mask Tools")
 
-Krita.instance().addExtension(BackgroundRemoverExtension(Krita.instance()))
+# Add extension with error handling
+try:
+    extension = BackgroundRemoverExtension(Krita.instance())
+    Krita.instance().addExtension(extension)
+except Exception as e:
+    import traceback
+    print(f"Failed to add extension: {e}")
+    traceback.print_exc()
 
 def createInstance():
     return BackgroundRemover()
