@@ -14,6 +14,7 @@ import zipfile
 import shutil
 import base64
 import re
+import imghdr
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import krita
@@ -1115,6 +1116,16 @@ class BackgroundRemover(QDockWidget):
                                 try:
                                     # Try to open as ZIP first
                                     with zipfile.ZipFile(download_file, 'r') as zip_ref:
+                                        # Validate ZIP contents before extraction
+                                        total_size = sum(zinfo.file_size for zinfo in zip_ref.filelist)
+                                        if total_size > 100 * 1024 * 1024:  # 100MB limit for total extracted size
+                                            return f"Error: ZIP file too large ({total_size} bytes)"
+                                        
+                                        # Check for suspicious filenames
+                                        for zinfo in zip_ref.filelist:
+                                            if os.path.isabs(zinfo.filename) or ".." in zinfo.filename:
+                                                return f"Error: Suspicious filename in ZIP: {zinfo.filename}"
+                                        
                                         # Extract all files to temp directory
                                         extract_dir = os.path.join(temp_dir, f"masks_{unique_id}_extracted")
                                         zip_ref.extractall(extract_dir)
@@ -1122,13 +1133,38 @@ class BackgroundRemover(QDockWidget):
                                         # Process each extracted mask
                                         mask_files = []
                                         for filename in os.listdir(extract_dir):
-                                            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                                                # Skip the panoptic map as it's not useful as a mask
-                                                if 'panoptic' in filename.lower():
+                                            filepath = os.path.join(extract_dir, filename)
+                                            
+                                            # Skip directories
+                                            if os.path.isdir(filepath):
+                                                continue
+                                            
+                                            # Validate it's actually an image file by checking the header
+                                            try:
+                                                img_type = imghdr.what(filepath)
+                                                if img_type not in ['png', 'jpeg', 'jpg']:
                                                     if self.debug_checkbox.isChecked():
-                                                        self.log_error(f"Skipping panoptic map: {filename}")
+                                                        self.log_error(f"Skipping non-image file: {filename} (detected as {img_type})")
                                                     continue
-                                                mask_files.append(filename)
+                                            except Exception as e:
+                                                if self.debug_checkbox.isChecked():
+                                                    self.log_error(f"Error checking file type for {filename}: {str(e)}")
+                                                continue
+                                            
+                                            # Skip the panoptic map as it's not useful as a mask
+                                            if 'panoptic' in filename.lower():
+                                                if self.debug_checkbox.isChecked():
+                                                    self.log_error(f"Skipping panoptic map: {filename}")
+                                                continue
+                                            
+                                            # Also validate file size (skip suspiciously large files)
+                                            file_size = os.path.getsize(filepath)
+                                            if file_size > 50 * 1024 * 1024:  # 50MB limit
+                                                if self.debug_checkbox.isChecked():
+                                                    self.log_error(f"Skipping suspiciously large file: {filename} ({file_size} bytes)")
+                                                continue
+                                            
+                                            mask_files.append(filename)
                                         
                                         # Sort masks numerically if they have numbers
                                         def extract_number(filename):
@@ -1186,6 +1222,16 @@ class BackgroundRemover(QDockWidget):
                                     # Not a ZIP file, try as single image
                                     if self.debug_checkbox.isChecked():
                                         self.log_error("File is not a ZIP, trying as single image")
+                                    
+                                    # Validate it's actually an image file
+                                    img_type = imghdr.what(download_file)
+                                    if img_type not in ['png', 'jpeg', 'jpg']:
+                                        return f"Error: Downloaded file is not a valid image (detected as {img_type})"
+                                    
+                                    # Check file size
+                                    file_size = os.path.getsize(download_file)
+                                    if file_size > 50 * 1024 * 1024:  # 50MB limit
+                                        return f"Error: Downloaded file too large ({file_size} bytes)"
                                     
                                     # Try to load as image
                                     mask_image = QImage(download_file)
