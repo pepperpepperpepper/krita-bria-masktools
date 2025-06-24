@@ -53,8 +53,9 @@ class BriaAISettingsDialog(QDialog):
 
 class BackgroundRemover(QDockWidget):
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Bria Mask Tools")
+        try:
+            super().__init__()
+            self.setWindowTitle("Bria Mask Tools")
         
         widget = QWidget()
         layout = QVBoxLayout()
@@ -84,6 +85,19 @@ class BackgroundRemover(QDockWidget):
         
         # Connect mode changes to update batch checkbox state
         self.mode_button_group.buttonClicked.connect(self.on_mode_changed)
+        
+        # API Key input (temporary until settings dialog is fixed)
+        api_key_group = QGroupBox("API Key")
+        api_key_layout = QVBoxLayout()
+        api_key_group.setLayout(api_key_layout)
+        
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setPlaceholderText("Enter your BriaAI API key")
+        self.api_key_input.setEchoMode(QLineEdit.Password)
+        self.api_key_input.textChanged.connect(lambda text: self.save_api_key(text))
+        api_key_layout.addWidget(self.api_key_input)
+        
+        layout.addWidget(api_key_group)
         
         # Store API key internally (loaded from settings)
         self.api_key = ""
@@ -127,9 +141,10 @@ class BackgroundRemover(QDockWidget):
 
         button_layout = QHBoxLayout()
         
-        self.settings_button = QPushButton("Settings")
-        self.settings_button.clicked.connect(self.show_settings)
-        button_layout.addWidget(self.settings_button)
+        # Temporarily disabled to debug
+        # self.settings_button = QPushButton("Settings")
+        # self.settings_button.clicked.connect(self.show_settings)
+        # button_layout.addWidget(self.settings_button)
         
         self.remove_bg_button = QPushButton("Remove")
         self.remove_bg_button.clicked.connect(self.remove_background)
@@ -160,6 +175,11 @@ class BackgroundRemover(QDockWidget):
         
         # Create menu action for settings
         self.create_settings_menu()
+        
+        except Exception as e:
+            import traceback
+            QMessageBox.critical(None, "Error", f"Failed to initialize Bria Mask Tools:\n{str(e)}\n\n{traceback.format_exc()}")
+            raise
     
     def create_settings_menu(self):
         """Create menu action for BriaAI settings"""
@@ -236,6 +256,10 @@ class BackgroundRemover(QDockWidget):
         else:
             # If no old key is found, just load the new key
             self.api_key = app.readSetting("AGD_BriaAI", "api_key", "")
+        
+        # Populate the input field with the loaded key
+        if hasattr(self, 'api_key_input'):
+            self.api_key_input.setText(self.api_key)
 
     def save_api_key(self, key):
         app = Krita.instance()
@@ -295,9 +319,12 @@ class BackgroundRemover(QDockWidget):
         self.status_label.setText("Preparing file(s) and request(s)...")
         QApplication.processEvents()
 
+        # Get API key from input field
+        self.api_key = self.api_key_input.text().strip()
+        
         # Check if API key is blank
         if self.api_key == "":
-            self.status_label.setText("Error: API key is blank. Please go to Settings → Configure BriaAI Plugin to enter your API key.")
+            self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
             progress.close()
             return
 
