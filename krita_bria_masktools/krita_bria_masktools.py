@@ -350,10 +350,13 @@ class BackgroundRemover(QDockWidget):
             
             # Debug: Show API key length (not the key itself for security)
             self.status_label.append(f"Debug: API key length: {len(self.api_key)} characters")
+            print(f"DEBUG: API key length: {len(self.api_key)}")
 
             application = Krita.instance()
             document = application.activeDocument()
             window = application.activeWindow()
+            
+            print(f"DEBUG: document={document}, window={window}")
 
             if not document:
                 self.status_label.setText("No active document")
@@ -425,24 +428,28 @@ class BackgroundRemover(QDockWidget):
 
             progress.setValue(10)
 
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [executor.submit(self.process_node, node, self.api_key, document, context, mode) for node in nodes]
-
-                for future in as_completed(futures):
-                    try:
-                        result = future.result()
-                        processed_count += 1
-                        if "successfully" in result.lower():
-                            success_count += 1
-                        else:
-                            error_messages.append(result)
-                        self.status_label.append(f"Processed {processed_count}/{total_count}: {result}")
-                        progress.setValue(10 + int(90 * processed_count / total_count))
-                    except Exception as e:
-                        processed_count += 1
-                        error_messages.append(f"Error: {str(e)}")
-                    finally:
-                        QApplication.processEvents()
+            # DEBUG: Process without threading for now
+            print("DEBUG: Processing nodes without threading")
+            for node in nodes:
+                try:
+                    print(f"DEBUG: Processing node: {node.name()}")
+                    result = self.process_node(node, self.api_key, document, context, mode)
+                    processed_count += 1
+                    if "successfully" in result.lower():
+                        success_count += 1
+                    else:
+                        error_messages.append(result)
+                    self.status_label.append(f"Processed {processed_count}/{total_count}: {result}")
+                    progress.setValue(10 + int(90 * processed_count / total_count))
+                except Exception as e:
+                    processed_count += 1
+                    error_msg = f"Error processing node: {str(e)}"
+                    error_messages.append(error_msg)
+                    print(f"DEBUG: {error_msg}")
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    QApplication.processEvents()
 
             # Unset batch mode
             try:
