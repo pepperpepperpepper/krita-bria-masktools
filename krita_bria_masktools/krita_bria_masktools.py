@@ -154,9 +154,9 @@ class BackgroundRemover(QDockWidget):
             # self.settings_button.clicked.connect(self.show_settings)
             # button_layout.addWidget(self.settings_button)
 
-            self.remove_bg_button = QPushButton("Remove")
-            self.remove_bg_button.clicked.connect(self.remove_background)
-            button_layout.addWidget(self.remove_bg_button)
+            self.action_button = QPushButton("Remove")
+            self.action_button.clicked.connect(self.remove_background)
+            button_layout.addWidget(self.action_button)
 
             self.open_temp_dir_button = QPushButton("Open Dir")
             self.open_temp_dir_button.clicked.connect(self.open_temp_directory)
@@ -200,9 +200,9 @@ class BackgroundRemover(QDockWidget):
 
         # Update button text based on mode
         if mode == 2:  # Generate Mask mode
-            self.remove_bg_button.setText("Generate Mask")
+            self.action_button.setText("Generate Mask")
         else:
-            self.remove_bg_button.setText("Remove")
+            self.action_button.setText("Remove")
 
         # Disable batch for Remove Background with Mask mode
         if mode == 1:  # Remove Background with Mask
@@ -359,7 +359,7 @@ class BackgroundRemover(QDockWidget):
             self.status_label.setText("Preparing file(s) and request(s)...")
 
             # Disable UI during processing to prevent re-entrancy issues
-            self.remove_bg_button.setEnabled(False)
+            self.action_button.setEnabled(False)
             self.batch_checkbox.setEnabled(False)
             self.mode_button_group.setExclusive(False)
             for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
@@ -377,7 +377,7 @@ class BackgroundRemover(QDockWidget):
                 self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
                 progress.close()
                 # Re-enable UI
-                self.remove_bg_button.setEnabled(True)
+                self.action_button.setEnabled(True)
                 self.batch_checkbox.setEnabled(True)
                 for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                     button.setEnabled(True)
@@ -388,7 +388,7 @@ class BackgroundRemover(QDockWidget):
                 self.status_label.setText("Error: API key appears too short. Please check your API key.")
                 progress.close()
                 # Re-enable UI
-                self.remove_bg_button.setEnabled(True)
+                self.action_button.setEnabled(True)
                 self.batch_checkbox.setEnabled(True)
                 for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                     button.setEnabled(True)
@@ -518,7 +518,7 @@ class BackgroundRemover(QDockWidget):
             progress.close()
 
             # Re-enable UI after processing
-            self.remove_bg_button.setEnabled(True)
+            self.action_button.setEnabled(True)
             self.batch_checkbox.setEnabled(True)
             for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                 button.setEnabled(True)
@@ -532,7 +532,7 @@ class BackgroundRemover(QDockWidget):
                 pass
 
             # Re-enable UI after error
-            self.remove_bg_button.setEnabled(True)
+            self.action_button.setEnabled(True)
             self.batch_checkbox.setEnabled(True)
             for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
                 button.setEnabled(True)
