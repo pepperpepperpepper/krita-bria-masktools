@@ -15,6 +15,12 @@ API_URL = "https://engine.prod.bria-api.com/v1/objects/mask_generator"
 with open("test_image.png", "rb") as f:
     file_data = f.read()
     encoded_file = base64.b64encode(file_data).decode('utf-8')
+    
+# Check the input image size
+from PIL import Image
+input_img = Image.open("test_image.png")
+print(f"Input image size: {input_img.size}")
+print(f"Input image mode: {input_img.mode}")
 
 # Prepare request
 request_data = {
@@ -69,6 +75,17 @@ try:
                                     rel_path = os.path.relpath(filepath, extract_dir)
                                     size = os.path.getsize(filepath)
                                     print(f"  {rel_path} ({size} bytes)")
+                                    
+                                    # Check one of the mask files
+                                    if file.endswith('_1.png'):
+                                        from PIL import Image
+                                        img = Image.open(filepath)
+                                        print(f"    Image mode: {img.mode}, size: {img.size}")
+                                        print(f"    Format: {img.format}, bits: {img.bits}")
+                                        # Check pixel data
+                                        pixels = list(img.getdata())
+                                        print(f"    First 10 pixels: {pixels[:10]}")
+                                        print(f"    Unique values: {len(set(pixels))}")
                                     
                     except zipfile.BadZipFile:
                         print("\nNot a ZIP file, checking if it's an image...")

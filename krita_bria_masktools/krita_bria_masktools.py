@@ -1088,9 +1088,40 @@ class BackgroundRemover(QDockWidget):
             # The mask_generator endpoint requires JSON format with base64-encoded file
             url = "https://engine.prod.bria-api.com/v1/objects/mask_generator"
 
-            # Read and encode the image file as base64
+            # Load the exported image to check dimensions and scale if needed
+            export_img = QImage(temp_file)
+            if export_img.isNull():
+                return "Error: Failed to load exported image"
+
+            original_width = export_img.width()
+            original_height = export_img.height()
+
+            if self.debug_checkbox.isChecked():
+                self.log_error(f"Original exported dimensions: {original_width}x{original_height}")
+
+            # Scale to 800px on longer dimension
+            if original_width >= original_height:
+                scaled_width = 800
+                scaled_height = round(original_height * (800.0 / original_width))
+            else:
+                scaled_height = 800
+                scaled_width = round(original_width * (800.0 / original_height))
+
+            if self.debug_checkbox.isChecked():
+                self.log_error(f"Scaling to: {scaled_width}x{scaled_height}")
+
+            # Scale the image
+            scaled_img = export_img.scaled(scaled_width, scaled_height,
+                                          Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+            # Save scaled image to temp file
+            scaled_temp_file = os.path.join(temp_dir, f"scaled_{unique_id}.jpg")
+            if not scaled_img.save(scaled_temp_file, "JPEG", 90):
+                return "Error: Failed to save scaled image"
+
+            # Read and encode the scaled image file as base64
             try:
-                with open(temp_file, 'rb') as f:
+                with open(scaled_temp_file, 'rb') as f:
                     file_data = f.read()
                     encoded_file = base64.b64encode(file_data).decode('utf-8')
 
@@ -1123,7 +1154,7 @@ class BackgroundRemover(QDockWidget):
                     if self.debug_checkbox.isChecked():
                         self.log_error(f"Mask generation request URL: {url}")
                         self.log_error(f"Request headers: {headers}")
-                        self.log_error(f"Image file size: {os.path.getsize(temp_file)} bytes")
+                        self.log_error(f"Scaled image file size: {os.path.getsize(scaled_temp_file)} bytes")
 
                     with urllib.request.urlopen(req, timeout=30, context=context) as response:
                         if response.status == 200:
@@ -1260,6 +1291,26 @@ class BackgroundRemover(QDockWidget):
                                                     self.log_error(
                                                         f"Mask loaded successfully: "
                                                         f"{mask_image.width()}x{mask_image.height()}")
+                                                    self.log_error(
+                                                        f"Original layer bounds: "
+                                                        f"{node.bounds().width()}x{node.bounds().height()}")
+
+                                                # Always scale mask back to original dimensions
+                                                # The mask is returned at the scaled size (800px on longer dimension)
+                                                # We need to scale it back to match the original layer
+                                                layer_width = node.bounds().width()
+                                                layer_height = node.bounds().height()
+
+                                                if self.debug_checkbox.isChecked():
+                                                    self.log_error(
+                                                        f"Scaling mask from {mask_image.width()}x{mask_image.height()} "
+                                                        f"back to original size: {layer_width}x{layer_height}")
+
+                                                # Scale mask to match original layer dimensions
+                                                mask_image = mask_image.scaled(
+                                                    layer_width, layer_height,
+                                                    Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+
                                                 # Convert image data to bytes
                                                 ptr = mask_image.constBits()
                                                 ptr.setsize(mask_image.byteCount())
