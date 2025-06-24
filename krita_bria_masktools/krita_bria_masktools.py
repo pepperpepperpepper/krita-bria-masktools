@@ -358,11 +358,35 @@ class BackgroundRemover(QDockWidget):
             # Get API key from input field
             self.api_key = self.api_key_input.text().strip()
 
+            # Clean the API key - remove any quotes or extra whitespace
+            self.api_key = self.api_key.strip('"\'').strip()
+
             # Check if API key is blank
             if self.api_key == "":
                 self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
                 progress.close()
+                # Re-enable UI
+                self.remove_button.setEnabled(True)
+                self.batch_checkbox.setEnabled(True)
+                for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
+                    button.setEnabled(True)
                 return
+
+            # Basic API key validation
+            if len(self.api_key) < 10:
+                self.status_label.setText("Error: API key appears too short. Please check your API key.")
+                progress.close()
+                # Re-enable UI
+                self.remove_button.setEnabled(True)
+                self.batch_checkbox.setEnabled(True)
+                for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
+                    button.setEnabled(True)
+                return
+
+            # Log API key info in debug mode
+            if self.debug_checkbox and self.debug_checkbox.isChecked():
+                self.log_error(f"Using API key starting with: {self.api_key[:5]}...")
+                self.log_error(f"API key length: {len(self.api_key)}")
 
 
             application = Krita.instance()
@@ -554,7 +578,8 @@ class BackgroundRemover(QDockWidget):
             # Create and send the request
             headers = {
                 'Content-Type': f'multipart/form-data; boundary={boundary}',
-                'api_token': api_key
+                'api_token': api_key,
+                'User-Agent': 'Krita-Bria-MaskTools/1.0'
             }
             req = urllib.request.Request(url, data=body, headers=headers, method='POST')
 
@@ -563,6 +588,10 @@ class BackgroundRemover(QDockWidget):
                 self.log_error(f"Request URL: {url}")
                 self.log_error(f"Request headers: {headers}")
                 self.log_error(f"API key length: {len(api_key)}")
+                if len(api_key) > 5:
+                    self.log_error(f"API key first 5 chars: {api_key[:5]}...")
+                else:
+                    self.log_error(f"API key: {api_key}")
 
             with urllib.request.urlopen(req, timeout=30, context=context) as response:
                 if response.status == 200:
@@ -646,13 +675,30 @@ class BackgroundRemover(QDockWidget):
             error_body = ""
             try:
                 error_body = e.read().decode('utf-8')
+                # Try to parse as JSON for better formatting
+                try:
+                    error_json = json.loads(error_body)
+                    error_body = json.dumps(error_json, indent=2)
+                except:
+                    pass
             except:
                 pass
-            error_msg = f"{self.handle_error(e.code)} - Details: {error_body}"
-            self.log_error(f"HTTPError in background removal: {error_msg}")
+
+            # Special handling for 401 errors
+            if e.code == 401:
+                error_msg = (f"Authentication failed. Please check your API key.\n"
+                           f"Details: {error_body}\n\n"
+                           f"To get a valid API key:\n"
+                           f"1. Go to https://www.bria.ai\n"
+                           f"2. Sign up for a free account\n"
+                           f"3. Copy your API key from the dashboard")
+            else:
+                error_msg = f"{self.handle_error(e.code)} - Details: {error_body}"
+
+            self.log_error(f"HTTPError in background removal: Status {e.code}")
             self.log_error(f"URL: {url}")
-            self.log_error(f"Status Code: {e.code}")
-            self.log_error(f"Headers: {e.headers}")
+            self.log_error(f"Response headers: {dict(e.headers)}")
+            self.log_error(f"Response body: {error_body}")
             return error_msg
         except urllib.error.URLError as e:
             if isinstance(e.reason, ssl.SSLCertVerificationError):
@@ -789,7 +835,8 @@ class BackgroundRemover(QDockWidget):
             # Create and send request with retry
             headers = {
                 'Content-Type': f'multipart/form-data; boundary={boundary}',
-                'api_token': api_key
+                'api_token': api_key,
+                'User-Agent': 'Krita-Bria-MaskTools/1.0'
             }
 
             for attempt in range(2):  # Try twice
@@ -925,7 +972,8 @@ class BackgroundRemover(QDockWidget):
 
             headers = {
                 'Content-Type': f'multipart/form-data; boundary={boundary}',
-                'api_token': api_key
+                'api_token': api_key,
+                'User-Agent': 'Krita-Bria-MaskTools/1.0'
             }
 
             # Send request with retry
