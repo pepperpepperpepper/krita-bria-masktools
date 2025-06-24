@@ -540,6 +540,12 @@ class BackgroundRemover(QDockWidget):
             }
             req = urllib.request.Request(url, data=body, headers=headers, method='POST')
 
+            # Log request details if debug mode
+            if self.debug_checkbox.isChecked():
+                self.log_error(f"Request URL: {url}")
+                self.log_error(f"Request headers: {headers}")
+                self.log_error(f"API key length: {len(api_key)}")
+
             with urllib.request.urlopen(req, timeout=30, context=context) as response:
                 if response.status == 200:
                     # Parse the JSON response
@@ -549,6 +555,9 @@ class BackgroundRemover(QDockWidget):
                         return "Error: Invalid JSON response from server"
 
                     result_url = response_data.get('result_url')
+
+                    if self.debug_checkbox.isChecked():
+                        self.log_error(f"Response data: {response_data}")
 
                     if result_url:
                         # Download the image from the URL
@@ -665,15 +674,26 @@ class BackgroundRemover(QDockWidget):
                 error_body = e.read().decode('utf-8')
             except:
                 pass
-            return f"{self.handle_error(e.code)} - Details: {error_body}"
+            error_msg = f"{self.handle_error(e.code)} - Details: {error_body}"
+            self.log_error(f"HTTPError in background removal: {error_msg}")
+            self.log_error(f"URL: {url}")
+            self.log_error(f"Status Code: {e.code}")
+            self.log_error(f"Headers: {e.headers}")
+            return error_msg
         except urllib.error.URLError as e:
             if isinstance(e.reason, ssl.SSLCertVerificationError):
-                return "SSL Certificate verification failed. You may need to update your certificates."
+                error_msg = "SSL Certificate verification failed. You may need to update your certificates."
             else:
-                return f"URLError: {str(e)}"
-        except json.JSONDecodeError:
+                error_msg = f"URLError: {str(e)}"
+            self.log_error(f"URLError in background removal: {error_msg}")
+            return error_msg
+        except json.JSONDecodeError as e:
+            self.log_error(f"JSON decode error: {str(e)}")
             return "Error: Invalid JSON response"
         except Exception as e:
+            self.log_error(f"Unexpected error in background removal: {str(e)}")
+            import traceback
+            self.log_error(traceback.format_exc())
             return f"Unexpected error: {str(e)}"
 
         finally:
@@ -801,6 +821,14 @@ class BackgroundRemover(QDockWidget):
             for attempt in range(2):  # Try twice
                 try:
                     req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+
+                    # Log request details if debug mode
+                    if self.debug_checkbox.isChecked():
+                        self.log_error(f"Masked removal request URL: {url}")
+                        self.log_error(f"Request headers: {headers}")
+                        self.log_error(f"Image file size: {os.path.getsize(temp_image_file)} bytes")
+                        self.log_error(f"Mask file size: {os.path.getsize(temp_mask_file)} bytes")
+
                     with urllib.request.urlopen(req, timeout=30, context=context) as response:
                         if response.status == 200:
                             try:
@@ -855,13 +883,26 @@ class BackgroundRemover(QDockWidget):
 
                 except urllib.error.HTTPError as e:
                     if attempt == 0:  # First attempt failed, retry
+                        self.log_error(f"First attempt failed for masked removal: {e.code}")
                         time.sleep(1)
                         continue
-                    return self.handle_error(e.code)
+                    error_body = ""
+                    try:
+                        error_body = e.read().decode('utf-8')
+                    except:
+                        pass
+                    self.log_error(f"HTTPError in masked removal: {e.code}")
+                    self.log_error(f"URL: {url}")
+                    self.log_error(f"Error body: {error_body}")
+                    return f"{self.handle_error(e.code)} - Details: {error_body}"
                 except Exception as e:
                     if attempt == 0:
+                        self.log_error(f"First attempt error: {str(e)}")
                         time.sleep(1)
                         continue
+                    self.log_error(f"Error in masked removal: {str(e)}")
+                    import traceback
+                    self.log_error(traceback.format_exc())
                     return f"Error: {str(e)}"
 
         finally:
@@ -917,6 +958,13 @@ class BackgroundRemover(QDockWidget):
             for attempt in range(2):
                 try:
                     req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+
+                    # Log request details if debug mode
+                    if self.debug_checkbox.isChecked():
+                        self.log_error(f"Mask generation request URL: {url}")
+                        self.log_error(f"Request headers: {headers}")
+                        self.log_error(f"Image file size: {os.path.getsize(temp_file)} bytes")
+
                     with urllib.request.urlopen(req, timeout=30, context=context) as response:
                         if response.status == 200:
                             try:
@@ -980,13 +1028,26 @@ class BackgroundRemover(QDockWidget):
 
                 except urllib.error.HTTPError as e:
                     if attempt == 0:
+                        self.log_error(f"First attempt failed for mask generation: {e.code}")
                         time.sleep(1)
                         continue
-                    return self.handle_error(e.code)
+                    error_body = ""
+                    try:
+                        error_body = e.read().decode('utf-8')
+                    except:
+                        pass
+                    self.log_error(f"HTTPError in mask generation: {e.code}")
+                    self.log_error(f"URL: {url}")
+                    self.log_error(f"Error body: {error_body}")
+                    return f"{self.handle_error(e.code)} - Details: {error_body}"
                 except Exception as e:
                     if attempt == 0:
+                        self.log_error(f"First attempt error in mask generation: {str(e)}")
                         time.sleep(1)
                         continue
+                    self.log_error(f"Error in mask generation: {str(e)}")
+                    import traceback
+                    self.log_error(traceback.format_exc())
                     return f"Error: {str(e)}"
 
         finally:
@@ -1014,6 +1075,19 @@ class BackgroundRemover(QDockWidget):
         }
         return (f"Error {status_code}: "
                 f"{error_messages.get(status_code, 'Unknown error. Please check your connection.')}")
+
+    def log_error(self, message):
+        """Log error messages to both stderr and status label"""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        full_message = f"[{timestamp}] {message}"
+
+        # Log to stderr
+        sys.stderr.write(full_message + "\n")
+        sys.stderr.flush()
+
+        # Also append to status label if in debug mode
+        if hasattr(self, 'debug_checkbox') and self.debug_checkbox.isChecked():
+            self.status_label.append(f"ERROR: {message}")
 
     def canvasChanged(self, canvas):
         pass
