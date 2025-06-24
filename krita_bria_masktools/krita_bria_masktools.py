@@ -307,24 +307,6 @@ class BackgroundRemover(QDockWidget):
                         # Any layer can be used as a mask
                         return selected, "selected_layer"
 
-        # 4. Check for any layer with "mask" in the name (case insensitive)
-        root = document.rootNode()
-        mask_candidates = []
-
-        def find_mask_layers(parent):
-            for layer in parent.childNodes():
-                if "mask" in layer.name().lower():
-                    mask_candidates.append(layer)
-                # Recursively check groups
-                if layer.type() == "grouplayer":
-                    find_mask_layers(layer)
-
-        find_mask_layers(root)
-
-        # Return the most recently created mask layer (usually last in list)
-        if mask_candidates:
-            return mask_candidates[-1], "named_mask_layer"
-
         return None, None
 
     def show_settings(self):
@@ -411,8 +393,7 @@ class BackgroundRemover(QDockWidget):
                         "No mask found. Please:\n"
                         "• Create a selection, or\n"
                         "• Add a mask to your layer, or\n"
-                        "• Select both image and mask layers, or\n"
-                        "• Create a layer with 'mask' in its name")
+                        "• Select both image and mask layers")
                     progress.close()
                     return
 
@@ -708,8 +689,7 @@ class BackgroundRemover(QDockWidget):
         mask, mask_type = self.detect_mask(document, node)
         if not mask:
             return ("Error: No mask detected. Try: creating a selection, "
-                    "adding a mask to your layer, selecting multiple layers, "
-                    "or naming a layer with 'mask' in it.")
+                    "adding a mask to your layer, or selecting multiple layers.")
 
         # Prepare temporary files
         temp_dir = tempfile.gettempdir()
