@@ -1,16 +1,24 @@
-# Hotkey Configuration for Krita Bria MaskTools
+# Hotkey Configuration for Bria Mask Tools
 
 This plugin supports keyboard shortcuts for quick access to all features.
 
-## Available Actions
+## Script Menu
 
-The following actions can be assigned hotkeys in Krita:
+In **Tools → Scripts**, you'll find:
+- **Bria Mask Tools** - Toggle the docker visibility
+
+## Hotkey Actions
+
+The following actions can be assigned hotkeys in Krita (they won't appear in menus):
 
 1. **Bria: Remove Background** - Instantly remove background from selected layer
 2. **Bria: Remove Background with Mask** - Remove background using current mask/selection
 3. **Bria: Generate Masks** - Generate AI masks for objects in the layer
-4. **Bria: Toggle Batch Mode** - Quick toggle for batch processing
-5. **Configure BriaAI Plugin** - Open settings dialog
+
+## Settings Menu
+
+In **Settings**, you'll find:
+- **Configure BriaAI Plugin** - Open API key configuration dialog
 
 ## How to Set Up Hotkeys
 

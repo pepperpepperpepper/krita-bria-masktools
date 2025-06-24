@@ -188,6 +188,13 @@ class BackgroundRemover(QDockWidget):
     def on_mode_changed(self):
         """Handle mode changes and update UI accordingly"""
         mode = self.mode_button_group.checkedId()
+        
+        # Update button text based on mode
+        if mode == 2:  # Generate Mask mode
+            self.remove_bg_button.setText("Generate Mask")
+        else:
+            self.remove_bg_button.setText("Remove")
+        
         # Disable batch for Remove Background with Mask mode
         if mode == 1:  # Remove Background with Mask
             self.batch_checkbox.setChecked(False)
@@ -283,8 +290,10 @@ class BackgroundRemover(QDockWidget):
         
         # 3. Check for active selection
         selection = document.selection()
-        if selection and not selection.isEmpty():
-            return selection, "selection"
+        if selection is not None:
+            # Check if selection has valid dimensions
+            if selection.width() > 0 and selection.height() > 0:
+                return selection, "selection"
         
         return None, None
     
@@ -327,6 +336,9 @@ class BackgroundRemover(QDockWidget):
             self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
             progress.close()
             return
+        
+        # Debug: Show API key length (not the key itself for security)
+        self.status_label.append(f"Debug: API key length: {len(self.api_key)} characters")
 
         application = Krita.instance()
         document = application.activeDocument()
@@ -620,7 +632,13 @@ class BackgroundRemover(QDockWidget):
                     return self.handle_error(response.status)
 
         except urllib.error.HTTPError as e:
-            return self.handle_error(e.code)
+            # Try to read the error response body for more details
+            error_body = ""
+            try:
+                error_body = e.read().decode('utf-8')
+            except:
+                pass
+            return f"{self.handle_error(e.code)} - Details: {error_body}"
         except urllib.error.URLError as e:
             if isinstance(e.reason, ssl.SSLCertVerificationError):
                 return "SSL Certificate verification failed. You may need to update your certificates."
@@ -985,23 +1003,23 @@ class BackgroundRemoverExtension(krita.Extension):
         action.triggered.connect(self.show_settings)
         self.actions.append(action)
         
-        # Create actions for each mode - these can have hotkeys assigned
-        remove_bg_action = window.createAction("bria_remove_background", "Bria: Remove Background", "Tools/Scripts")
+        # Create actions for hotkeys only - not in menus
+        remove_bg_action = window.createAction("bria_remove_background", "Bria: Remove Background")
         remove_bg_action.triggered.connect(lambda: self.execute_mode(0))
         self.actions.append(remove_bg_action)
         
-        remove_mask_action = window.createAction("bria_remove_with_mask", "Bria: Remove Background with Mask", "Tools/Scripts")
+        remove_mask_action = window.createAction("bria_remove_with_mask", "Bria: Remove Background with Mask")
         remove_mask_action.triggered.connect(lambda: self.execute_mode(1))
         self.actions.append(remove_mask_action)
         
-        generate_mask_action = window.createAction("bria_generate_masks", "Bria: Generate Masks", "Tools/Scripts")
+        generate_mask_action = window.createAction("bria_generate_masks", "Bria: Generate Masks")
         generate_mask_action.triggered.connect(lambda: self.execute_mode(2))
         self.actions.append(generate_mask_action)
         
-        # Quick action for batch mode toggle
-        batch_toggle_action = window.createAction("bria_toggle_batch", "Bria: Toggle Batch Mode", "Tools/Scripts")
-        batch_toggle_action.triggered.connect(self.toggle_batch_mode)
-        self.actions.append(batch_toggle_action)
+        # Create the main script action
+        main_action = window.createAction("bria_mask_tools", "Bria Mask Tools", "Tools/Scripts")
+        main_action.triggered.connect(self.toggle_docker)
+        self.actions.append(main_action)
     
     def show_settings(self):
         """Show the BriaAI settings dialog"""
@@ -1071,6 +1089,23 @@ class BackgroundRemoverExtension(krita.Extension):
         if docker:
             docker.batch_checkbox.setChecked(not docker.batch_checkbox.isChecked())
             docker.toggle_batch_mode()
+    
+    def toggle_docker(self):
+        """Toggle the visibility of the Bria Mask Tools docker"""
+        app = Krita.instance()
+        window = app.activeWindow()
+        if window:
+            # Try to find and toggle the docker
+            dockers = window.dockers()
+            for docker in dockers:
+                if hasattr(docker, 'windowTitle') and callable(docker.windowTitle):
+                    if docker.windowTitle() == "Bria Mask Tools":
+                        docker.setVisible(not docker.isVisible())
+                        return
+            
+            # If not found, show message
+            QMessageBox.information(None, "Bria Mask Tools", 
+                                  "Please enable the docker first:\nSettings → Dockers → Bria Mask Tools")
 
 Krita.instance().addExtension(BackgroundRemoverExtension(Krita.instance()))
 
