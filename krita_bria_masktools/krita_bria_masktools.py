@@ -346,7 +346,14 @@ class BackgroundRemover(QDockWidget):
 
             # Clear the status_label field
             self.status_label.setText("Preparing file(s) and request(s)...")
-            QApplication.processEvents()
+
+            # Disable UI during processing to prevent re-entrancy issues
+            self.remove_button.setEnabled(False)
+            self.batch_checkbox.setEnabled(False)
+            self.mode_button_group.setExclusive(False)
+            for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
+                button.setEnabled(False)
+            self.mode_button_group.setExclusive(True)
 
             # Get API key from input field
             self.api_key = self.api_key_input.text().strip()
@@ -407,7 +414,6 @@ class BackgroundRemover(QDockWidget):
                     os.environ['SSL_CERT_FILE'] = cert_file
                 else:
                     self.status_label.setText(f"Warning: Certificate file {cert_file} not found.")
-                    QApplication.processEvents()
 
             try:
                 context = ssl.create_default_context()
@@ -453,7 +459,7 @@ class BackgroundRemover(QDockWidget):
                     error_msg = f"Error processing node: {str(e)}"
                     error_messages.append(error_msg)
                 finally:
-                    QApplication.processEvents()
+                    pass  # Removed processEvents to prevent re-entrancy issues
 
             # Unset batch mode
             try:
@@ -475,6 +481,12 @@ class BackgroundRemover(QDockWidget):
             self.status_label.setText(final_status)
             progress.setValue(100)
             progress.close()
+
+            # Re-enable UI after processing
+            self.remove_button.setEnabled(True)
+            self.batch_checkbox.setEnabled(True)
+            for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
+                button.setEnabled(True)
         except Exception as e:
             import traceback
             error_msg = f"ERROR in remove_background: {str(e)}\n{traceback.format_exc()}"
@@ -483,6 +495,12 @@ class BackgroundRemover(QDockWidget):
                 progress.close()
             except:
                 pass
+
+            # Re-enable UI after error
+            self.remove_button.setEnabled(True)
+            self.batch_checkbox.setEnabled(True)
+            for button in [self.remove_bg_radio, self.remove_bg_mask_radio, self.generate_mask_radio]:
+                button.setEnabled(True)
 
     def process_node(self, node, api_key, document, context, mode):
         """Process node based on selected mode"""
@@ -573,73 +591,29 @@ class BackgroundRemover(QDockWidget):
                         # Get the color space of the original document
                         original_color_space = document.colorModel()
 
+                        # Create a new layer in the document
+                        new_layer = document.createNode(new_layer_name, "paintlayer")
+                        if not new_layer:
+                            return "Error: Failed to create new layer"
+
+                        # Load the image
+                        image = QImage(result_file)
+                        if image.isNull():
+                            return "Error: Failed to load result image"
+
+                        # Convert image data to bytes
+                        ptr = image.constBits()
+                        ptr.setsize(image.byteCount())
+                        new_layer.setPixelData(bytes(ptr), 0, 0, image.width(), image.height())
+
+                        # Add the new layer to the document
+                        document.rootNode().addChildNode(new_layer, node)
+
                         if original_color_space != "RGBA":
-                            # Create a new document with the downloaded image
-                            app = Krita.instance()
-                            temp_doc = None
-                            try:
-                                temp_doc = app.createDocument(0, 0, "temp_doc", "RGBA", "U8", "", 300.0)
-                                if not temp_doc:
-                                    return "Error: Failed to create temporary document"
-
-                                temp_layer = temp_doc.createNode("temp_layer", "paintlayer")
-                                if not temp_layer:
-                                    return "Error: Failed to create temporary layer"
-
-                                temp_doc.rootNode().addChildNode(temp_layer, None)
-
-                                # Load the image into the layer
-                                image = QImage(result_file)
-                                if image.isNull():
-                                    return "Error: Failed to load result image"
-
-                                # Convert image data to bytes
-                                ptr = image.constBits()
-                                ptr.setsize(image.byteCount())
-                                temp_layer.setPixelData(bytes(ptr), 0, 0, image.width(), image.height())
-
-                                # Convert the temporary document to the original color space
-                                temp_doc.setColorSpace(original_color_space, document.colorDepth(),
-                                                      document.colorProfile())
-                                temp_doc.refreshProjection()
-
-                                # Copy the layer to the original document
-                                copied_layer = temp_layer.clone()
-                                if not copied_layer:
-                                    return "Error: Failed to clone layer"
-
-                                document.rootNode().addChildNode(copied_layer, node)
-                                copied_layer.setName(new_layer_name)
-                            finally:
-                                # Always close the temporary document
-                                if temp_doc:
-                                    try:
-                                        temp_doc.close()
-                                    except Exception:
-                                        pass
-
+                            # For non-RGBA documents, the layer inherits the document's color space
                             result = (f"Background removed successfully for {node.name()} "
-                                     f"(Converted to {original_color_space}, colors may differ)")
+                                     f"(Working in {original_color_space} color space)")
                         else:
-                            # For RGBA documents, directly create a new layer with the image
-                            new_layer = document.createNode(new_layer_name, "paintlayer")
-                            if not new_layer:
-                                return "Error: Failed to create new layer"
-
-                            # Load the image into the layer
-                            image = QImage(result_file)
-                            if image.isNull():
-                                return "Error: Failed to load result image"
-
-                            # Validate image dimensions
-                            if image.width() <= 0 or image.height() <= 0:
-                                return "Error: Invalid image dimensions"
-
-                            # Load the image data into the layer
-                            new_layer.setPixelData(image.constBits().asstring(image.byteCount()), 0, 0,
-                                                  image.width(), image.height())
-
-                            document.rootNode().addChildNode(new_layer, node)
                             result = f"Background removed successfully for {node.name()}"
 
                         # Hide the original layer
