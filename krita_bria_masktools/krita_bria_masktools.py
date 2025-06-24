@@ -149,23 +149,24 @@ class BackgroundRemover(QDockWidget):
             self.debug_checkbox = QCheckBox("Debug Mode")
             self.debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
             advanced_layout.addWidget(self.debug_checkbox)
-            
+
             self.masks_as_layers_checkbox = QCheckBox("Create masks as separate layers")
-            self.masks_as_layers_checkbox.setToolTip("If checked, masks will be created as separate paint layers instead of transparency masks")
+            self.masks_as_layers_checkbox.setToolTip(
+                "If checked, masks will be created as separate paint layers instead of transparency masks")
             advanced_layout.addWidget(self.masks_as_layers_checkbox)
-            
+
             # Prompt field for eraser/inpainting
             prompt_layout = QHBoxLayout()
             prompt_label = QLabel("Prompt (optional):")
             prompt_label.setToolTip("For Remove Background with Mask: guide the inpainting result")
             prompt_layout.addWidget(prompt_label)
-            
+
             self.prompt_input = QLineEdit()
             self.prompt_input.setPlaceholderText("e.g., 'blue sky' or 'wooden floor'")
             prompt_layout.addWidget(self.prompt_input)
-            
+
             advanced_layout.addLayout(prompt_layout)
-            
+
             # Additional options for eraser
             self.preserve_alpha_checkbox = QCheckBox("Preserve Alpha Channel")
             self.preserve_alpha_checkbox.setChecked(True)
@@ -770,7 +771,7 @@ class BackgroundRemover(QDockWidget):
         if not mask:
             return ("Error: No mask detected. Try: creating a selection, "
                     "adding a mask to your layer, or selecting multiple layers.")
-        
+
         # Log mask detection if debug mode
         if self.debug_checkbox.isChecked():
             self.log_error(f"Detected mask type: {mask_type}")
@@ -799,21 +800,21 @@ class BackgroundRemover(QDockWidget):
                     self.log_error(f"Exporting image to: {temp_image_file}")
                     bounds = node.bounds()
                     self.log_error(f"Node bounds: {bounds.x()}, {bounds.y()}, {bounds.width()}, {bounds.height()}")
-                
+
                 # Simply save without checking return value like the original
                 node.save(temp_image_file, 1.0, 1.0, export_params, node.bounds())
-                
+
                 # Verify file was created
                 if not os.path.exists(temp_image_file):
                     return "Error: Export file was not created"
-                
+
                 file_size = os.path.getsize(temp_image_file)
                 if file_size == 0:
                     return "Error: Export file is empty"
-                    
+
                 if self.debug_checkbox.isChecked():
                     self.log_error(f"Export successful, file size: {file_size} bytes")
-                    
+
             except Exception as e:
                 return f"Error exporting image: {str(e)}"
 
@@ -879,10 +880,10 @@ class BackgroundRemover(QDockWidget):
             try:
                 with open(temp_image_file, 'rb') as f:
                     encoded_image = base64.b64encode(f.read()).decode('utf-8')
-                
+
                 with open(temp_mask_file, 'rb') as f:
                     encoded_mask = base64.b64encode(f.read()).decode('utf-8')
-                
+
                 if self.debug_checkbox.isChecked():
                     self.log_error(f"Encoded image size: {len(encoded_image)} bytes")
                     self.log_error(f"Encoded mask size: {len(encoded_mask)} bytes")
@@ -898,14 +899,14 @@ class BackgroundRemover(QDockWidget):
                 "preserve_alpha": self.preserve_alpha_checkbox.isChecked(),
                 "content_moderation": False
             }
-            
+
             # Add prompt if provided
             prompt_text = self.prompt_input.text().strip()
             if prompt_text:
                 request_data["prompt"] = prompt_text
                 if self.debug_checkbox.isChecked():
                     self.log_error(f"Using prompt: {prompt_text}")
-            
+
             body = json.dumps(request_data).encode('utf-8')
 
             # Create and send request with retry
@@ -1066,48 +1067,48 @@ class BackgroundRemover(QDockWidget):
                     self.log_error(f"Exporting image to: {temp_file}")
                     bounds = node.bounds()
                     self.log_error(f"Node bounds: {bounds.x()}, {bounds.y()}, {bounds.width()}, {bounds.height()}")
-                
+
                 # Simply save without checking return value like the original
                 node.save(temp_file, 1.0, 1.0, export_params, node.bounds())
-                
+
                 # Verify file was created
                 if not os.path.exists(temp_file):
                     return "Error: Export file was not created"
-                
+
                 file_size = os.path.getsize(temp_file)
                 if file_size == 0:
                     return "Error: Export file is empty"
-                    
+
                 if self.debug_checkbox.isChecked():
                     self.log_error(f"Export successful, file size: {file_size} bytes")
-                    
+
             except Exception as e:
                 return f"Error exporting image: {str(e)}"
 
             # Prepare API request
             # The mask_generator endpoint requires JSON format with base64-encoded file
             url = "https://engine.prod.bria-api.com/v1/objects/mask_generator"
-            
+
             # Read and encode the image file as base64
             try:
                 with open(temp_file, 'rb') as f:
                     file_data = f.read()
                     encoded_file = base64.b64encode(file_data).decode('utf-8')
-                
+
                 if self.debug_checkbox.isChecked():
                     self.log_error(f"Encoded file size: {len(encoded_file)} bytes")
             except Exception as e:
                 return f"Error encoding image: {str(e)}"
-            
+
             # Prepare JSON request with base64-encoded file
             request_data = {
                 "file": encoded_file,
                 "content_moderation": False,
                 "sync": True
             }
-            
+
             body = json.dumps(request_data).encode('utf-8')
-            
+
             headers = {
                 'Content-Type': 'application/json',
                 'api_token': api_key,
@@ -1135,12 +1136,12 @@ class BackgroundRemover(QDockWidget):
                             # Check for different response formats
                             objects_masks_url = response_data.get('objects_masks')
                             masks_list = response_data.get('masks', [])
-                            
+
                             if self.debug_checkbox.isChecked():
                                 self.log_error(f"Response data: {response_data}")
-                            
+
                             mask_count = 0
-                            
+
                             if objects_masks_url:
                                 # Download the file (could be ZIP or image)
                                 download_file = os.path.join(temp_dir, f"masks_{unique_id}_download")
@@ -1148,7 +1149,7 @@ class BackgroundRemover(QDockWidget):
                                     urllib.request.urlretrieve(objects_masks_url, download_file)
                                 except Exception as e:
                                     return f"Error downloading masks file: {str(e)}"
-                                
+
                                 # Check if it's a ZIP file or an image
                                 try:
                                     # Try to open as ZIP first
@@ -1157,69 +1158,73 @@ class BackgroundRemover(QDockWidget):
                                         total_size = sum(zinfo.file_size for zinfo in zip_ref.filelist)
                                         if total_size > 100 * 1024 * 1024:  # 100MB limit for total extracted size
                                             return f"Error: ZIP file too large ({total_size} bytes)"
-                                        
+
                                         # Check for suspicious filenames
                                         for zinfo in zip_ref.filelist:
                                             if os.path.isabs(zinfo.filename) or ".." in zinfo.filename:
                                                 return f"Error: Suspicious filename in ZIP: {zinfo.filename}"
-                                        
+
                                         # Extract all files to temp directory
                                         extract_dir = os.path.join(temp_dir, f"masks_{unique_id}_extracted")
                                         zip_ref.extractall(extract_dir)
-                                        
+
                                         # Process each extracted mask
                                         mask_files = []
                                         for filename in os.listdir(extract_dir):
                                             filepath = os.path.join(extract_dir, filename)
-                                            
+
                                             # Skip directories
                                             if os.path.isdir(filepath):
                                                 continue
-                                            
+
                                             # Validate it's actually an image file by checking the header
                                             try:
                                                 img_type = imghdr.what(filepath)
                                                 if img_type not in ['png', 'jpeg', 'jpg']:
                                                     if self.debug_checkbox.isChecked():
-                                                        self.log_error(f"Skipping non-image file: {filename} (detected as {img_type})")
+                                                        self.log_error(
+                                                            f"Skipping non-image file: {filename} "
+                                                            f"(detected as {img_type})")
                                                     continue
                                             except Exception as e:
                                                 if self.debug_checkbox.isChecked():
                                                     self.log_error(f"Error checking file type for {filename}: {str(e)}")
                                                 continue
-                                            
+
                                             # Skip the panoptic map as it's not useful as a mask
                                             if 'panoptic' in filename.lower():
                                                 if self.debug_checkbox.isChecked():
                                                     self.log_error(f"Skipping panoptic map: {filename}")
                                                 continue
-                                            
+
                                             # Also validate file size (skip suspiciously large files)
                                             file_size = os.path.getsize(filepath)
                                             if file_size > 50 * 1024 * 1024:  # 50MB limit
                                                 if self.debug_checkbox.isChecked():
-                                                    self.log_error(f"Skipping suspiciously large file: {filename} ({file_size} bytes)")
+                                                    self.log_error(
+                                                        f"Skipping suspiciously large file: {filename} "
+                                                        f"({file_size} bytes)")
                                                 continue
-                                            
+
                                             mask_files.append(filename)
-                                        
+
                                         # Sort masks numerically if they have numbers
                                         def extract_number(filename):
                                             match = re.search(r'_(\d+)\.', filename)
                                             return int(match.group(1)) if match else 999
-                                        
+
                                         mask_files.sort(key=extract_number)
-                                        
+
                                         for idx, filename in enumerate(mask_files):
                                             mask_file = os.path.join(extract_dir, filename)
-                                            
+
                                             # Extract mask number from filename if available
                                             mask_num = extract_number(filename)
                                             if mask_num != 999:
                                                 mask_name = f"Object Mask {mask_num}"
                                             else:
                                                 mask_name = f"Mask {idx + 1}"
-                                            
+
                                             # Create mask as either transparency mask or separate layer
                                             if self.masks_as_layers_checkbox.isChecked():
                                                 # Create as separate paint layer
@@ -1227,7 +1232,7 @@ class BackgroundRemover(QDockWidget):
                                             else:
                                                 # Create as transparency mask (default)
                                                 mask_layer = document.createNode(mask_name, "transparencymask")
-                                            
+
                                             if not mask_layer:
                                                 continue  # Skip if layer creation fails
 
@@ -1250,26 +1255,26 @@ class BackgroundRemover(QDockWidget):
                                                 else:
                                                     # Add as child transparency mask
                                                     node.addChildNode(mask_layer, None)
-                                                
+
                                                 mask_count += 1
-                                                    
-                                                    if self.debug_checkbox.isChecked():
-                                                        self.log_error(f"Added mask: {filename}")
+
+                                                if self.debug_checkbox.isChecked():
+                                                    self.log_error(f"Added mask: {filename}")
                                 except zipfile.BadZipFile:
                                     # Not a ZIP file, try as single image
                                     if self.debug_checkbox.isChecked():
                                         self.log_error("File is not a ZIP, trying as single image")
-                                    
+
                                     # Validate it's actually an image file
                                     img_type = imghdr.what(download_file)
                                     if img_type not in ['png', 'jpeg', 'jpg']:
                                         return f"Error: Downloaded file is not a valid image (detected as {img_type})"
-                                    
+
                                     # Check file size
                                     file_size = os.path.getsize(download_file)
                                     if file_size > 50 * 1024 * 1024:  # 50MB limit
                                         return f"Error: Downloaded file too large ({file_size} bytes)"
-                                    
+
                                     # Try to load as image
                                     mask_image = QImage(download_file)
                                     if not mask_image.isNull():
@@ -1281,11 +1286,11 @@ class BackgroundRemover(QDockWidget):
                                             ptr.setsize(mask_image.byteCount())
                                             mask_layer.setPixelData(bytes(ptr), 0, 0,
                                                                   mask_image.width(), mask_image.height())
-                                            
+
                                             # Add as child of the node
                                             node.addChildNode(mask_layer, None)
                                             mask_count = 1
-                                    
+
                                     # Cleanup
                                     if not self.debug_checkbox.isChecked():
                                         try:
@@ -1302,7 +1307,7 @@ class BackgroundRemover(QDockWidget):
                                             os.remove(download_file)
                                         except Exception:
                                             pass
-                                
+
                                 if mask_count > 0:
                                     try:
                                         document.refreshProjection()
@@ -1316,7 +1321,7 @@ class BackgroundRemover(QDockWidget):
                                 for idx, mask_url in enumerate(masks_list):
                                     if not mask_url or not isinstance(mask_url, str):
                                         continue
-                                    
+
                                     # Download mask
                                     mask_file = os.path.join(temp_dir, f"mask_{unique_id}_{idx}.png")
                                     try:
@@ -1325,13 +1330,13 @@ class BackgroundRemover(QDockWidget):
                                         if self.debug_checkbox.isChecked():
                                             self.log_error(f"Failed to download mask {idx}: {str(e)}")
                                         continue
-                                    
+
                                     # Create transparency mask
                                     mask_name = f"Mask {idx + 1}"
                                     mask_layer = document.createNode(mask_name, "transparencymask")
                                     if not mask_layer:
                                         continue
-                                    
+
                                     # Load mask image
                                     mask_image = QImage(mask_file)
                                     if not mask_image.isNull():
@@ -1340,18 +1345,18 @@ class BackgroundRemover(QDockWidget):
                                         ptr.setsize(mask_image.byteCount())
                                         mask_layer.setPixelData(bytes(ptr), 0, 0,
                                                               mask_image.width(), mask_image.height())
-                                        
+
                                         # Add as child of the node
                                         node.addChildNode(mask_layer, None)
                                         mask_count += 1
-                                    
+
                                     # Cleanup
                                     if not self.debug_checkbox.isChecked():
                                         try:
                                             os.remove(mask_file)
                                         except Exception:
                                             pass
-                                
+
                                 if mask_count > 0:
                                     try:
                                         document.refreshProjection()
@@ -1461,7 +1466,7 @@ class BackgroundRemover(QDockWidget):
             self.api_key_status.setStyleSheet("QLabel { color: red; font-weight: bold; }")
         if hasattr(self, 'api_key_input'):
             self.api_key_input.setStyleSheet("QLineEdit { border: 2px solid red; }")
-    
+
     def enable_ui(self):
         """Re-enable all UI elements after processing"""
         self.action_button.setEnabled(True)
