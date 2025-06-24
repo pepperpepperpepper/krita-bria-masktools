@@ -13,6 +13,7 @@ import uuid
 import zipfile
 import shutil
 import base64
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import krita
@@ -147,6 +148,10 @@ class BackgroundRemover(QDockWidget):
             self.debug_checkbox = QCheckBox("Debug Mode")
             self.debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
             advanced_layout.addWidget(self.debug_checkbox)
+            
+            self.masks_as_layers_checkbox = QCheckBox("Create masks as separate layers")
+            self.masks_as_layers_checkbox.setToolTip("If checked, masks will be created as separate paint layers instead of transparency masks")
+            advanced_layout.addWidget(self.masks_as_layers_checkbox)
 
             layout.addWidget(self.advanced_group)
 
@@ -1115,28 +1120,65 @@ class BackgroundRemover(QDockWidget):
                                         zip_ref.extractall(extract_dir)
                                         
                                         # Process each extracted mask
-                                        for idx, filename in enumerate(sorted(os.listdir(extract_dir))):
+                                        mask_files = []
+                                        for filename in os.listdir(extract_dir):
                                             if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                                                mask_file = os.path.join(extract_dir, filename)
-                                                
-                                                # Create transparency mask
+                                                # Skip the panoptic map as it's not useful as a mask
+                                                if 'panoptic' in filename.lower():
+                                                    if self.debug_checkbox.isChecked():
+                                                        self.log_error(f"Skipping panoptic map: {filename}")
+                                                    continue
+                                                mask_files.append(filename)
+                                        
+                                        # Sort masks numerically if they have numbers
+                                        def extract_number(filename):
+                                            match = re.search(r'_(\d+)\.', filename)
+                                            return int(match.group(1)) if match else 999
+                                        
+                                        mask_files.sort(key=extract_number)
+                                        
+                                        for idx, filename in enumerate(mask_files):
+                                            mask_file = os.path.join(extract_dir, filename)
+                                            
+                                            # Extract mask number from filename if available
+                                            mask_num = extract_number(filename)
+                                            if mask_num != 999:
+                                                mask_name = f"Object Mask {mask_num}"
+                                            else:
                                                 mask_name = f"Mask {idx + 1}"
+                                            
+                                            # Create mask as either transparency mask or separate layer
+                                            if self.masks_as_layers_checkbox.isChecked():
+                                                # Create as separate paint layer
+                                                mask_layer = document.createNode(mask_name, "paintlayer")
+                                            else:
+                                                # Create as transparency mask (default)
                                                 mask_layer = document.createNode(mask_name, "transparencymask")
-                                                if not mask_layer:
-                                                    continue  # Skip if layer creation fails
+                                            
+                                            if not mask_layer:
+                                                continue  # Skip if layer creation fails
 
-                                                # Load mask image
-                                                mask_image = QImage(mask_file)
-                                                if not mask_image.isNull():
-                                                    # Convert image data to bytes
-                                                    ptr = mask_image.constBits()
-                                                    ptr.setsize(mask_image.byteCount())
-                                                    mask_layer.setPixelData(bytes(ptr), 0, 0,
-                                                                          mask_image.width(), mask_image.height())
+                                            # Load mask image
+                                            mask_image = QImage(mask_file)
+                                            if not mask_image.isNull():
+                                                # Convert image data to bytes
+                                                ptr = mask_image.constBits()
+                                                ptr.setsize(mask_image.byteCount())
+                                                mask_layer.setPixelData(bytes(ptr), 0, 0,
+                                                                      mask_image.width(), mask_image.height())
 
-                                                    # Add as child of the node only if image loaded successfully
+                                                # Add the mask layer
+                                                if self.masks_as_layers_checkbox.isChecked():
+                                                    # Add as sibling layer (above the original)
+                                                    parent = node.parentNode()
+                                                    if not parent:
+                                                        parent = document.rootNode()
+                                                    parent.addChildNode(mask_layer, node)
+                                                else:
+                                                    # Add as child transparency mask
                                                     node.addChildNode(mask_layer, None)
-                                                    mask_count += 1
+                                                
+                                                mask_count += 1
                                                     
                                                     if self.debug_checkbox.isChecked():
                                                         self.log_error(f"Added mask: {filename}")
