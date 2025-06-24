@@ -1479,9 +1479,12 @@ class BackgroundRemover(QDockWidget):
         sys.stderr.write(full_message + "\n")
         sys.stderr.flush()
 
+        # Also print to stdout for better visibility
+        print(full_message)
+
         # Also append to status label if in debug mode
         if hasattr(self, 'debug_checkbox') and self.debug_checkbox.isChecked():
-            self.status_label.append(f"ERROR: {message}")
+            self.status_label.append(f"DEBUG: {message}")
 
     def highlight_invalid_api_key(self):
         """Highlight the API key field when it's invalid"""
