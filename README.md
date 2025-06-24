@@ -1,79 +1,79 @@
-# Krita Background Remover (BriaAI)
+# Krita Bria MaskTools
 
-[![Download](https://img.shields.io/github/v/release/agoulddesign/krita-bg-remove-bria?style=for-the-badge&label=Download)](https://github.com/agoulddesign/krita-bg-remove-bria/releases/)
+A comprehensive Krita plugin for AI-powered masking operations using BriaAI's API services.
 
-[![Krita Logo](https://raw.githubusercontent.com/agoulddesign/krita-bg-remove-bria/main/misc/krita05.png)](https://krita.org)
+## Features
 
-### A powerful Krita plugin for fast and automatic background removal using BriaAI's API.
+### Three Powerful Modes:
 
-**Now with lightning fast batch mode.**
+1. **Remove Background** - Quick background removal using BriaAI's background removal API
+2. **Remove Background with Mask** - Precise background removal using custom masks or selections
+3. **Generate Mask** - AI-powered object detection and mask generation
 
-Say goodbye to massive servers or third-party apps – isolate subjects effortlessly and quickly within Krita!
+## Key Features
 
-### Nov. 2024 Announcement! Bria AI has updated their background removal algorithm, which means an automatic upgrade in the quality and accuracy of background removal with this plugin. No need to update. Enjoy!
+- **Smart Mask Detection**: Automatically detects and uses:
+  - Transparency masks
+  - Paint layers named "Mask Layer"
+  - Active selections
+- **Batch Processing**: Process multiple layers at once (available for Remove Background and Generate Mask modes)
+- **Settings Dialog**: Secure API key storage via Krita's menu system
+- **Advanced Options**: Control threading and enable debug mode
+- **Robust Error Handling**: Automatic retry with clear error messages
 
-## Setup Instructions
+## Installation
 
-1. Create a free BriaAI account and obtain an API key at [www.bria.ai](http://www.bria.ai).
-   - No credit card required for first three months
-   - 1000 free uses per month
-   - Affordable rates thereafter (~$0.08 per use, pay as you go)
+1. Download the plugin ZIP file
+2. In Krita: Tools → Scripts → Import Python Plugin from File
+3. Select the downloaded ZIP (do not extract)
+4. Enable via Settings → Dockers → Krita Bria MaskTools
 
-2. Download the plugin and import it into Krita:
-   - Navigate to `Tools -> Scripts -> Import Python plugin from file...`
-   - **Note**: Do not extract the files
+## Setup
 
-3. Enable the docker window:
-   - Go to `Settings -> Dockers -> Background Remover BriaAI`
-
-4. Paste your BriaAI API key into the designated field.
+1. Get your free API key from [bria.ai](https://bria.ai)
+   - No credit card required for first 3 months
+   - 1000 free operations per month
+2. Configure your API key: Settings → Configure BriaAI Plugin
+3. Enter your API key and click OK
 
 ## Usage
 
-1. Select the layer(s) for background removal. Select **Batch** mode for multiple.
-2. Click **Remove Background**. Processing may take a few seconds.
-3. New layer(s) with an alpha channel and removed background will be created.
+### Remove Background
+1. Select a layer
+2. Choose "Remove Background" mode
+3. Click "Remove"
+4. Result appears as new "Cutout" layer
 
-## Important Considerations
+### Remove Background with Mask
+1. Create a selection or mask layer
+2. Choose "Remove Background with Mask" mode
+3. Click "Remove"
+4. Result appears as new "Masked" layer
 
-### Alpha Channel and Transparency
+### Generate Mask
+1. Select a layer with objects
+2. Choose "Generate Mask" mode
+3. Click "Remove"
+4. AI-generated masks appear as transparency masks on your layer
 
-- Removing the background of a layer that already has an alpha channel (transparency) can result in odd placement of the resulting image.
-- To fix this, turn the original layer back on and align it to the original.
-- It is recommended to fill in any transparent areas before removing the background.
+## Tips
 
-### Image Dimensions and Boundaries
+- For best results, use images with clear subjects
+- Fill transparent areas before background removal
+- Use Image → Trim to Image Size for layers extending beyond canvas
+- Enable batch mode to process multiple layers efficiently
 
-- Removing the background of images with different dimensions, or images that extend beyond the visible area, may result in unexpected results.
-- For best results, ensure all layers are the same size and do not extend past the visible area. Use the `Image -> Trim to Image Size` tool for this.
+## Attribution
 
-### Batch Mode Processing
+This plugin is based on the original "Background Remover BriaAI" plugin by A. Gould.
+- Original repository: [github.com/agoulddesign/krita-bg-remove-bria](https://github.com/agoulddesign/krita-bg-remove-bria)
 
-When processing a large number of layers:
+## License
 
-- You can set the number of concurrent working processes (threads) to automatic or increase it to speed up the process.
-- Be cautious when increasing threads, as it may cause stability issues, especially on older/slower computers.
-- The default setting uses the same number of threads as the number of cores in your processor(s).
-
-
-> **Note**: The removal process works best on images with clear subjects and minimal depth of field. For complex images, you may need to transfer the alpha of the new layer to the original as a transparency mask for further adjustments.
-
-## About
-
-- BriaAI uses licensed material to train their AI models, ensuring no copyright concerns.
-- This plugin is not affiliated with BriaAI or Krita.
-- Created primarily with AI assistance – optimizations welcome! Feel free to fork or submit pull requests.
+MIT License - See LICENSE file for details
 
 ## Compatibility
 
-- Tested with Krita 5.2.2, 5.2.3, 5.2.6
-- May not be compatible with other versions
-
-## Known Issues & Future Plans
-
-- **Bug**: Currently works with most color spaces, but may cause some color differences with the result image (most notable with CMYK). This is easily fixed if you simply transfer the alpha from the resulting image to the original.
-- **Todo**: Maybe handle different size image layers better
-
----
-
-### Enjoy the power and simplicity of automatic background removal in Krita!
+- Tested with Krita 5.2.2+
+- Requires Python 3.6+
+- Works on Windows, macOS, and Linux

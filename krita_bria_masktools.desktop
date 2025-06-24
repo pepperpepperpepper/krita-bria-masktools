@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=krita_bria_masktools
+X-Python-2-Compatible=false
+X-Krita-Manual=Manual.html
+Name=Bria Mask Tools
+Comment=AI-powered background removal, mask generation, and object masking tools
