@@ -697,7 +697,7 @@ class BackgroundRemover(QDockWidget):
 
             # Special handling for 401 errors
             if e.code == 401:
-                error_msg = ("❌ INVALID API KEY ❌\n\n"
+                error_msg = ("INVALID API KEY\n\n"
                            "Your API key was rejected by BriaAI.\n\n"
                            "Please check:\n"
                            "• You've entered the correct API key\n"
@@ -940,7 +940,7 @@ class BackgroundRemover(QDockWidget):
 
                     # Special handling for 401 errors
                     if e.code == 401:
-                        error_msg = ("❌ INVALID API KEY ❌\n\n"
+                        error_msg = ("INVALID API KEY\n\n"
                                    "Your API key was rejected by BriaAI.\n\n"
                                    "Please check:\n"
                                    "• You've entered the correct API key\n"
@@ -1112,7 +1112,7 @@ class BackgroundRemover(QDockWidget):
 
                     # Special handling for 401 errors
                     if e.code == 401:
-                        error_msg = ("❌ INVALID API KEY ❌\n\n"
+                        error_msg = ("INVALID API KEY\n\n"
                                    "Your API key was rejected by BriaAI.\n\n"
                                    "Please check:\n"
                                    "• You've entered the correct API key\n"
@@ -1185,7 +1185,7 @@ class BackgroundRemover(QDockWidget):
     def highlight_invalid_api_key(self):
         """Highlight the API key field when it's invalid"""
         if hasattr(self, 'api_key_status'):
-            self.api_key_status.setText("⚠️ Invalid API Key - Please check and re-enter")
+            self.api_key_status.setText("Invalid API Key - Please check and re-enter")
             self.api_key_status.setStyleSheet("QLabel { color: red; font-weight: bold; }")
         if hasattr(self, 'api_key_input'):
             self.api_key_input.setStyleSheet("QLineEdit { border: 2px solid red; }")
