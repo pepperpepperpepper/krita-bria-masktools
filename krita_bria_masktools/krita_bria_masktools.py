@@ -81,7 +81,7 @@ class BackgroundRemover(QDockWidget):
             self.mode_button_group.addButton(self.remove_bg_radio, 0)
             mode_layout.addWidget(self.remove_bg_radio)
 
-            self.remove_bg_mask_radio = QRadioButton("Remove Background with Mask")
+            self.remove_bg_mask_radio = QRadioButton("Remove Background with Mask (Inpainting)")
             self.mode_button_group.addButton(self.remove_bg_mask_radio, 1)
             mode_layout.addWidget(self.remove_bg_mask_radio)
 
@@ -153,6 +153,24 @@ class BackgroundRemover(QDockWidget):
             self.masks_as_layers_checkbox = QCheckBox("Create masks as separate layers")
             self.masks_as_layers_checkbox.setToolTip("If checked, masks will be created as separate paint layers instead of transparency masks")
             advanced_layout.addWidget(self.masks_as_layers_checkbox)
+            
+            # Prompt field for eraser/inpainting
+            prompt_layout = QHBoxLayout()
+            prompt_label = QLabel("Prompt (optional):")
+            prompt_label.setToolTip("For Remove Background with Mask: guide the inpainting result")
+            prompt_layout.addWidget(prompt_label)
+            
+            self.prompt_input = QLineEdit()
+            self.prompt_input.setPlaceholderText("e.g., 'blue sky' or 'wooden floor'")
+            prompt_layout.addWidget(self.prompt_input)
+            
+            advanced_layout.addLayout(prompt_layout)
+            
+            # Additional options for eraser
+            self.preserve_alpha_checkbox = QCheckBox("Preserve Alpha Channel")
+            self.preserve_alpha_checkbox.setChecked(True)
+            self.preserve_alpha_checkbox.setToolTip("Maintain transparency in the original image")
+            advanced_layout.addWidget(self.preserve_alpha_checkbox)
 
             layout.addWidget(self.advanced_group)
 
@@ -854,36 +872,45 @@ class BackgroundRemover(QDockWidget):
                 except Exception as e:
                     return f"Error exporting mask: {str(e)}"
 
-            # Prepare API request for /eraser endpoint
-            url = "https://engine.prod.bria-api.com/v1/eraser"
+            # Prepare API request for /erase_foreground endpoint
+            url = "https://engine.prod.bria-api.com/v1/erase_foreground"
 
-            # Prepare multipart form data
-            boundary = 'wL36Yn8afVp8Ag7AmP8qZ0SA4n1v9T'
-            data = []
+            # Read and encode both files as base64
+            try:
+                with open(temp_image_file, 'rb') as f:
+                    encoded_image = base64.b64encode(f.read()).decode('utf-8')
+                
+                with open(temp_mask_file, 'rb') as f:
+                    encoded_mask = base64.b64encode(f.read()).decode('utf-8')
+                
+                if self.debug_checkbox.isChecked():
+                    self.log_error(f"Encoded image size: {len(encoded_image)} bytes")
+                    self.log_error(f"Encoded mask size: {len(encoded_mask)} bytes")
+            except Exception as e:
+                return f"Error encoding files: {str(e)}"
 
-            # Add image file
-            data.append(f'--{boundary}'.encode())
-            data.append(b'Content-Disposition: form-data; name="file"; filename="image.png"')
-            data.append(b'Content-Type: image/png')
-            data.append(b'')
-            with open(temp_image_file, 'rb') as f:
-                data.append(f.read())
-
-            # Add mask file
-            data.append(f'--{boundary}'.encode())
-            data.append(b'Content-Disposition: form-data; name="mask"; filename="mask.png"')
-            data.append(b'Content-Type: image/png')
-            data.append(b'')
-            with open(temp_mask_file, 'rb') as f:
-                data.append(f.read())
-
-            data.append(f'--{boundary}--'.encode())
-            data.append(b'')
-            body = b'\r\n'.join(data)
+            # Prepare JSON request
+            request_data = {
+                "file": encoded_image,
+                "mask_file": encoded_mask,
+                "mask_type": "manual",
+                "sync": True,
+                "preserve_alpha": self.preserve_alpha_checkbox.isChecked(),
+                "content_moderation": False
+            }
+            
+            # Add prompt if provided
+            prompt_text = self.prompt_input.text().strip()
+            if prompt_text:
+                request_data["prompt"] = prompt_text
+                if self.debug_checkbox.isChecked():
+                    self.log_error(f"Using prompt: {prompt_text}")
+            
+            body = json.dumps(request_data).encode('utf-8')
 
             # Create and send request with retry
             headers = {
-                'Content-Type': f'multipart/form-data; boundary={boundary}',
+                'Content-Type': 'application/json',
                 'api_token': api_key,
                 'User-Agent': 'Krita-Bria-MaskTools/1.0'
             }
@@ -916,8 +943,15 @@ class BackgroundRemover(QDockWidget):
                                 except Exception as e:
                                     return f"Error downloading result: {str(e)}"
 
-                                # Create new layer
-                                new_layer = document.createNode("Masked", "paintlayer")
+                                # Create new layer with descriptive name
+                                layer_name = "Inpainted"
+                                if prompt_text:
+                                    # Include prompt in layer name if it's short enough
+                                    if len(prompt_text) <= 20:
+                                        layer_name = f"Inpainted ({prompt_text})"
+                                    else:
+                                        layer_name = f"Inpainted ({prompt_text[:17]}...)"
+                                new_layer = document.createNode(layer_name, "paintlayer")
                                 if not new_layer:
                                     return "Error: Failed to create new layer"
                                 image = QImage(result_file)
@@ -945,7 +979,10 @@ class BackgroundRemover(QDockWidget):
                                 except Exception:
                                     pass  # Non-critical if refresh fails
 
-                                return f"Masked background removed successfully for {node.name()}"
+                                result_msg = f"Inpainting completed successfully for {node.name()}"
+                                if prompt_text:
+                                    result_msg += f" with prompt: '{prompt_text}'"
+                                return result_msg
                             else:
                                 return "Error: No result URL in response"
                         else:
