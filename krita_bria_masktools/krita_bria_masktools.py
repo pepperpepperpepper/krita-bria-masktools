@@ -56,125 +56,125 @@ class BackgroundRemover(QDockWidget):
         try:
             super().__init__()
             self.setWindowTitle("Bria Mask Tools")
+            
+            widget = QWidget()
+            layout = QVBoxLayout()
+            widget.setLayout(layout)
         
-        widget = QWidget()
-        layout = QVBoxLayout()
-        widget.setLayout(layout)
-        
-        # Mode selection radio buttons
-        mode_group = QGroupBox("Mode")
-        mode_layout = QVBoxLayout()
-        mode_group.setLayout(mode_layout)
-        
-        self.mode_button_group = QButtonGroup()
-        
-        self.remove_bg_radio = QRadioButton("Remove Background")
-        self.remove_bg_radio.setChecked(True)
-        self.mode_button_group.addButton(self.remove_bg_radio, 0)
-        mode_layout.addWidget(self.remove_bg_radio)
-        
-        self.remove_bg_mask_radio = QRadioButton("Remove Background with Mask")
-        self.mode_button_group.addButton(self.remove_bg_mask_radio, 1)
-        mode_layout.addWidget(self.remove_bg_mask_radio)
-        
-        self.generate_mask_radio = QRadioButton("Generate Mask")
-        self.mode_button_group.addButton(self.generate_mask_radio, 2)
-        mode_layout.addWidget(self.generate_mask_radio)
-        
-        layout.addWidget(mode_group)
-        
-        # Connect mode changes to update batch checkbox state
-        self.mode_button_group.buttonClicked.connect(self.on_mode_changed)
-        
-        # API Key input (temporary until settings dialog is fixed)
-        api_key_group = QGroupBox("API Key")
-        api_key_layout = QVBoxLayout()
-        api_key_group.setLayout(api_key_layout)
-        
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setPlaceholderText("Enter your BriaAI API key")
-        self.api_key_input.setEchoMode(QLineEdit.Password)
-        self.api_key_input.textChanged.connect(lambda text: self.save_api_key(text))
-        api_key_layout.addWidget(self.api_key_input)
-        
-        layout.addWidget(api_key_group)
-        
-        # Store API key internally (loaded from settings)
-        self.api_key = ""
-        
-        batch_layout = QHBoxLayout()
-        self.batch_checkbox = QCheckBox("Batch (selected layers)")
-        self.batch_checkbox.stateChanged.connect(self.toggle_batch_mode)
-        batch_layout.addWidget(self.batch_checkbox)
-        
-        # Advanced options
-        self.advanced_checkbox = QCheckBox("Advanced")
-        self.advanced_checkbox.stateChanged.connect(self.toggle_advanced_options)
-        batch_layout.addWidget(self.advanced_checkbox)
-        
-        layout.addLayout(batch_layout)
+            # Mode selection radio buttons
+            mode_group = QGroupBox("Mode")
+            mode_layout = QVBoxLayout()
+            mode_group.setLayout(mode_layout)
+            
+            self.mode_button_group = QButtonGroup()
+            
+            self.remove_bg_radio = QRadioButton("Remove Background")
+            self.remove_bg_radio.setChecked(True)
+            self.mode_button_group.addButton(self.remove_bg_radio, 0)
+            mode_layout.addWidget(self.remove_bg_radio)
+            
+            self.remove_bg_mask_radio = QRadioButton("Remove Background with Mask")
+            self.mode_button_group.addButton(self.remove_bg_mask_radio, 1)
+            mode_layout.addWidget(self.remove_bg_mask_radio)
+            
+            self.generate_mask_radio = QRadioButton("Generate Mask")
+            self.mode_button_group.addButton(self.generate_mask_radio, 2)
+            mode_layout.addWidget(self.generate_mask_radio)
+            
+            layout.addWidget(mode_group)
+            
+            # Connect mode changes to update batch checkbox state
+            self.mode_button_group.buttonClicked.connect(self.on_mode_changed)
+            
+            # API Key input (temporary until settings dialog is fixed)
+            api_key_group = QGroupBox("API Key")
+            api_key_layout = QVBoxLayout()
+            api_key_group.setLayout(api_key_layout)
+            
+            self.api_key_input = QLineEdit()
+            self.api_key_input.setPlaceholderText("Enter your BriaAI API key")
+            self.api_key_input.setEchoMode(QLineEdit.Password)
+            self.api_key_input.textChanged.connect(lambda text: self.save_api_key(text))
+            api_key_layout.addWidget(self.api_key_input)
+            
+            layout.addWidget(api_key_group)
+            
+            # Store API key internally (loaded from settings)
+            self.api_key = ""
+            
+            batch_layout = QHBoxLayout()
+            self.batch_checkbox = QCheckBox("Batch (selected layers)")
+            self.batch_checkbox.stateChanged.connect(self.toggle_batch_mode)
+            batch_layout.addWidget(self.batch_checkbox)
+            
+            # Advanced options
+            self.advanced_checkbox = QCheckBox("Advanced")
+            self.advanced_checkbox.stateChanged.connect(self.toggle_advanced_options)
+            batch_layout.addWidget(self.advanced_checkbox)
+            
+            layout.addLayout(batch_layout)
 
-        self.advanced_group = QGroupBox("Advanced Options")
-        advanced_layout = QVBoxLayout()
-        self.advanced_group.setLayout(advanced_layout)
-        self.advanced_group.setVisible(False)
+            self.advanced_group = QGroupBox("Advanced Options")
+            advanced_layout = QVBoxLayout()
+            self.advanced_group.setLayout(advanced_layout)
+            self.advanced_group.setVisible(False)
 
-        thread_layout = QHBoxLayout()
-        self.auto_thread_checkbox = QCheckBox("Threads (AUTO)")
-        self.auto_thread_checkbox.setChecked(True)  # Default is auto
-        self.auto_thread_checkbox.stateChanged.connect(self.toggle_thread_count)
-        thread_layout.addWidget(self.auto_thread_checkbox)
+            thread_layout = QHBoxLayout()
+            self.auto_thread_checkbox = QCheckBox("Threads (AUTO)")
+            self.auto_thread_checkbox.setChecked(True)  # Default is auto
+            self.auto_thread_checkbox.stateChanged.connect(self.toggle_thread_count)
+            thread_layout.addWidget(self.auto_thread_checkbox)
 
-        self.thread_count_spinbox = QSpinBox()
-        self.thread_count_spinbox.setMinimum(1)
-        self.thread_count_spinbox.setValue(os.cpu_count() or multiprocessing.cpu_count())
-        self.thread_count_spinbox.setVisible(False)
-        thread_layout.addWidget(self.thread_count_spinbox)
+            self.thread_count_spinbox = QSpinBox()
+            self.thread_count_spinbox.setMinimum(1)
+            self.thread_count_spinbox.setValue(os.cpu_count() or multiprocessing.cpu_count())
+            self.thread_count_spinbox.setVisible(False)
+            thread_layout.addWidget(self.thread_count_spinbox)
 
-        advanced_layout.addLayout(thread_layout)
+            advanced_layout.addLayout(thread_layout)
 
-        self.debug_checkbox = QCheckBox("Debug Mode")
-        self.debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
-        advanced_layout.addWidget(self.debug_checkbox)
+            self.debug_checkbox = QCheckBox("Debug Mode")
+            self.debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
+            advanced_layout.addWidget(self.debug_checkbox)
 
-        layout.addWidget(self.advanced_group)
+            layout.addWidget(self.advanced_group)
 
-        button_layout = QHBoxLayout()
-        
-        # Temporarily disabled to debug
-        # self.settings_button = QPushButton("Settings")
-        # self.settings_button.clicked.connect(self.show_settings)
-        # button_layout.addWidget(self.settings_button)
-        
-        self.remove_bg_button = QPushButton("Remove")
-        self.remove_bg_button.clicked.connect(self.remove_background)
-        button_layout.addWidget(self.remove_bg_button)
+            button_layout = QHBoxLayout()
+            
+            # Temporarily disabled to debug
+            # self.settings_button = QPushButton("Settings")
+            # self.settings_button.clicked.connect(self.show_settings)
+            # button_layout.addWidget(self.settings_button)
+            
+            self.remove_bg_button = QPushButton("Remove")
+            self.remove_bg_button.clicked.connect(self.remove_background)
+            button_layout.addWidget(self.remove_bg_button)
 
-        self.open_temp_dir_button = QPushButton("Open Dir")
-        self.open_temp_dir_button.clicked.connect(self.open_temp_directory)
-        self.open_temp_dir_button.setVisible(False)
-        button_layout.addWidget(self.open_temp_dir_button)
+            self.open_temp_dir_button = QPushButton("Open Dir")
+            self.open_temp_dir_button.clicked.connect(self.open_temp_directory)
+            self.open_temp_dir_button.setVisible(False)
+            button_layout.addWidget(self.open_temp_dir_button)
 
-        self.copy_text_button = QPushButton("Copy Text")
-        self.copy_text_button.clicked.connect(self.copy_status_text)
-        self.copy_text_button.setVisible(False)
-        button_layout.addWidget(self.copy_text_button)
+            self.copy_text_button = QPushButton("Copy Text")
+            self.copy_text_button.clicked.connect(self.copy_status_text)
+            self.copy_text_button.setVisible(False)
+            button_layout.addWidget(self.copy_text_button)
 
-        layout.addLayout(button_layout)
-        
-        self.status_label = QTextEdit()
-        self.status_label.setReadOnly(True)
-        self.status_label.setLineWrapMode(QTextEdit.WidgetWidth)
-        self.status_label.setMinimumHeight(25)  # Set a default minimum height
-        layout.addWidget(self.status_label)
-        
-        self.setWidget(widget)
+            layout.addLayout(button_layout)
+            
+            self.status_label = QTextEdit()
+            self.status_label.setReadOnly(True)
+            self.status_label.setLineWrapMode(QTextEdit.WidgetWidth)
+            self.status_label.setMinimumHeight(25)  # Set a default minimum height
+            layout.addWidget(self.status_label)
+            
+            self.setWidget(widget)
 
-        # Load saved API key
-        self.load_api_key()
-        
-        # Create menu action for settings
-        self.create_settings_menu()
+            # Load saved API key
+            self.load_api_key()
+            
+            # Create menu action for settings
+            self.create_settings_menu()
         
         except Exception as e:
             import traceback
