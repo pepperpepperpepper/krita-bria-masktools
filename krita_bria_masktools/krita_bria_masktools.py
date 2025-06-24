@@ -14,7 +14,6 @@ import zipfile
 import shutil
 import base64
 import re
-import imghdr
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import krita
@@ -1177,15 +1176,21 @@ class BackgroundRemover(QDockWidget):
                                             if os.path.isdir(filepath):
                                                 continue
 
-                                            # Validate it's actually an image file by checking the header
+                                            # Validate it's actually an image file
                                             try:
-                                                img_type = imghdr.what(filepath)
-                                                if img_type not in ['png', 'jpeg', 'jpg']:
+                                                # Use QImage to check if it's a valid image
+                                                test_img = QImage(filepath)
+                                                if test_img.isNull():
                                                     if self.debug_checkbox.isChecked():
-                                                        self.log_error(
-                                                            f"Skipping non-image file: {filename} "
-                                                            f"(detected as {img_type})")
+                                                        self.log_error(f"Skipping invalid image file: {filename}")
                                                     continue
+
+                                                # Check format
+                                                format_str = test_img.format()
+                                                if format_str not in [QImage.Format_RGB32, QImage.Format_ARGB32,
+                                                                     QImage.Format_RGB888, QImage.Format_RGBA8888]:
+                                                    # Still valid, just needs conversion
+                                                    pass
                                             except Exception as e:
                                                 if self.debug_checkbox.isChecked():
                                                     self.log_error(f"Error checking file type for {filename}: {str(e)}")
@@ -1265,10 +1270,10 @@ class BackgroundRemover(QDockWidget):
                                     if self.debug_checkbox.isChecked():
                                         self.log_error("File is not a ZIP, trying as single image")
 
-                                    # Validate it's actually an image file
-                                    img_type = imghdr.what(download_file)
-                                    if img_type not in ['png', 'jpeg', 'jpg']:
-                                        return f"Error: Downloaded file is not a valid image (detected as {img_type})"
+                                    # Validate it's actually an image file using QImage
+                                    test_img = QImage(download_file)
+                                    if test_img.isNull():
+                                        return f"Error: Downloaded file is not a valid image"
 
                                     # Check file size
                                     file_size = os.path.getsize(download_file)
