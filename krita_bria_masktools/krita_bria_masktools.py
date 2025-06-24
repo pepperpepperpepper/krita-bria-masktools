@@ -1167,64 +1167,69 @@ class BackgroundRemover(QDockWidget):
                                         extract_dir = os.path.join(temp_dir, f"masks_{unique_id}_extracted")
                                         zip_ref.extractall(extract_dir)
 
-                                        # Process each extracted mask
+                                        if self.debug_checkbox.isChecked():
+                                            self.log_error(f"ZIP contains files: {zip_ref.namelist()}")
+
+                                        # Process each extracted mask (walk recursively)
                                         mask_files = []
-                                        for filename in os.listdir(extract_dir):
-                                            filepath = os.path.join(extract_dir, filename)
+                                        for root, dirs, files in os.walk(extract_dir):
+                                            for filename in files:
+                                                filepath = os.path.join(root, filename)
 
-                                            # Skip directories
-                                            if os.path.isdir(filepath):
-                                                continue
-
-                                            # Validate it's actually an image file
-                                            try:
-                                                # Use QImage to check if it's a valid image
-                                                test_img = QImage(filepath)
-                                                if test_img.isNull():
-                                                    if self.debug_checkbox.isChecked():
-                                                        self.log_error(f"Skipping invalid image file: {filename}")
+                                                # Skip directories (not needed with os.walk but kept for safety)
+                                                if os.path.isdir(filepath):
                                                     continue
 
-                                                # Check format
-                                                format_str = test_img.format()
-                                                if format_str not in [QImage.Format_RGB32, QImage.Format_ARGB32,
-                                                                     QImage.Format_RGB888, QImage.Format_RGBA8888]:
-                                                    # Still valid, just needs conversion
-                                                    pass
-                                            except Exception as e:
-                                                if self.debug_checkbox.isChecked():
-                                                    self.log_error(f"Error checking file type for {filename}: {str(e)}")
-                                                continue
+                                                # Validate it's actually an image file
+                                                try:
+                                                    # Use QImage to check if it's a valid image
+                                                    test_img = QImage(filepath)
+                                                    if test_img.isNull():
+                                                        if self.debug_checkbox.isChecked():
+                                                            self.log_error(f"Skipping invalid image file: {filename}")
+                                                        continue
 
-                                            # Skip the panoptic map as it's not useful as a mask
-                                            if 'panoptic' in filename.lower():
-                                                if self.debug_checkbox.isChecked():
-                                                    self.log_error(f"Skipping panoptic map: {filename}")
-                                                continue
+                                                    # Check format
+                                                    format_str = test_img.format()
+                                                    if format_str not in [QImage.Format_RGB32, QImage.Format_ARGB32,
+                                                                         QImage.Format_RGB888, QImage.Format_RGBA8888]:
+                                                        # Still valid, just needs conversion
+                                                        pass
+                                                except Exception as e:
+                                                    if self.debug_checkbox.isChecked():
+                                                        self.log_error(
+                                                            f"Error checking file type for {filename}: {str(e)}")
+                                                    continue
 
-                                            # Also validate file size (skip suspiciously large files)
-                                            file_size = os.path.getsize(filepath)
-                                            if file_size > 50 * 1024 * 1024:  # 50MB limit
-                                                if self.debug_checkbox.isChecked():
-                                                    self.log_error(
-                                                        f"Skipping suspiciously large file: {filename} "
-                                                        f"({file_size} bytes)")
-                                                continue
+                                                # Skip the panoptic map as it's not useful as a mask
+                                                if 'panoptic' in filename.lower():
+                                                    if self.debug_checkbox.isChecked():
+                                                        self.log_error(f"Skipping panoptic map: {filename}")
+                                                    continue
 
-                                            mask_files.append(filename)
+                                                # Also validate file size (skip suspiciously large files)
+                                                file_size = os.path.getsize(filepath)
+                                                if file_size > 50 * 1024 * 1024:  # 50MB limit
+                                                    if self.debug_checkbox.isChecked():
+                                                        self.log_error(
+                                                            f"Skipping suspiciously large file: {filename} "
+                                                            f"({file_size} bytes)")
+                                                    continue
+
+                                                mask_files.append((filepath, filename))
 
                                         # Sort masks numerically if they have numbers
-                                        def extract_number(filename):
+                                        def extract_number(item):
+                                            filepath, filename = item
                                             match = re.search(r'_(\d+)\.', filename)
                                             return int(match.group(1)) if match else 999
 
                                         mask_files.sort(key=extract_number)
 
-                                        for idx, filename in enumerate(mask_files):
-                                            mask_file = os.path.join(extract_dir, filename)
+                                        for idx, (mask_file, filename) in enumerate(mask_files):
 
                                             # Extract mask number from filename if available
-                                            mask_num = extract_number(filename)
+                                            mask_num = extract_number((mask_file, filename))
                                             if mask_num != 999:
                                                 mask_name = f"Object Mask {mask_num}"
                                             else:
