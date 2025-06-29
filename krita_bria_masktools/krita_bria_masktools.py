@@ -16,14 +16,15 @@ import base64
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import krita
-from krita import Krita, DockWidgetFactory, DockWidgetFactoryBase, InfoObject
+import krita  # type: ignore
+from krita import Krita, DockWidgetFactory, DockWidgetFactoryBase, InfoObject, Selection  # type: ignore
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLineEdit, QLabel, QDockWidget,
                              QApplication, QCheckBox, QSpinBox, QTextEdit, QProgressDialog,
                              QHBoxLayout, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
-                             QDialog, QFormLayout, QDialogButtonBox)
+                             QDialog, QFormLayout, QDialogButtonBox, QComboBox, QSizePolicy, QScrollArea)
 from PyQt5.QtGui import QImage, QClipboard, qRgb
 from PyQt5.QtCore import QRect, Qt
+from .mask_utils import prepare_mask_bytes, qimage_to_bytes, create_transparency_mask_from_qimage, create_selection_mask_from_qimage
 
 class BriaAISettingsDialog(QDialog):
     """Settings dialog for BriaAI API configuration"""
@@ -58,20 +59,34 @@ class BriaAISettingsDialog(QDialog):
     def get_api_key(self):
         return self.api_key_input.text()
 
-class BackgroundRemover(QDockWidget):
+class BriaMaskTools(QDockWidget):
     def __init__(self):
         try:
             super().__init__()
             self.setWindowTitle("Bria Mask Tools")
 
             widget = QWidget()
+            # Main vertical layout with compact margins and spacing
             layout = QVBoxLayout()
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.setSpacing(5)
             widget.setLayout(layout)
+
+            # Ensure the docker starts wide enough so group-box titles are not clipped
+            widget.setMinimumWidth(260)
+            widget.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
 
             # Mode selection radio buttons
             mode_group = QGroupBox("Mode")
-            mode_layout = QVBoxLayout()
+            # Prevent the mode group from expanding vertically
+            mode_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            mode_layout = QHBoxLayout()
             mode_group.setLayout(mode_layout)
+
+            # Compact margins around mode radio buttons
+            mode_layout.setContentsMargins(10, 6, 10, 6)
+            # Optional: adjust spacing between radio buttons
+            mode_layout.setSpacing(10)
 
             self.mode_button_group = QButtonGroup()
 
@@ -80,49 +95,43 @@ class BackgroundRemover(QDockWidget):
             self.mode_button_group.addButton(self.remove_bg_radio, 0)
             mode_layout.addWidget(self.remove_bg_radio)
 
-            self.generate_mask_radio = QRadioButton("Generate Mask")
+            self.generate_mask_radio = QRadioButton("Generate Masks")
             self.mode_button_group.addButton(self.generate_mask_radio, 1)
             mode_layout.addWidget(self.generate_mask_radio)
 
             layout.addWidget(mode_group)
 
+            # Mask import mode selector moved here (under Mode group)
+            self.mask_import_combo = QComboBox()
+            self.mask_import_combo.addItems([
+                "Selection masks (default)",
+                "Transparency masks",
+                "Separate layers"
+            ])
+            self.mask_import_combo.setCurrentIndex(0)
+            self.mask_import_combo.setToolTip("Choose how downloaded masks should be imported into Krita")
+            self.mask_import_combo.setVisible(False)
+            layout.addWidget(self.mask_import_combo)
+
             # Connect mode changes to update batch checkbox state
             self.mode_button_group.buttonClicked.connect(self.on_mode_changed)
 
-            # API Key input (temporary until settings dialog is fixed)
-            api_key_group = QGroupBox("API Key")
-            api_key_layout = QVBoxLayout()
-            api_key_group.setLayout(api_key_layout)
-
-            self.api_key_input = QLineEdit()
-            self.api_key_input.setPlaceholderText("Enter your BriaAI API key")
-            self.api_key_input.setEchoMode(QLineEdit.Password)
-            self.api_key_input.textChanged.connect(lambda text: self.save_api_key(text))
-            api_key_layout.addWidget(self.api_key_input)
-
-            # API key status label
-            self.api_key_status = QLabel("")
-            self.api_key_status.setWordWrap(True)
-            api_key_layout.addWidget(self.api_key_status)
-
-            layout.addWidget(api_key_group)
-
-            # Store API key internally (loaded from settings)
-            self.api_key = ""
-
             batch_layout = QHBoxLayout()
+            # Compact batch-layout spacing
+            batch_layout.setContentsMargins(0, 0, 0, 0)
+            batch_layout.setSpacing(5)
             self.batch_checkbox = QCheckBox("Batch (selected layers)")
             self.batch_checkbox.stateChanged.connect(self.toggle_batch_mode)
             batch_layout.addWidget(self.batch_checkbox)
 
             # Advanced options
-            self.advanced_checkbox = QCheckBox("Advanced")
+            self.advanced_checkbox = QCheckBox("Settings")
             self.advanced_checkbox.stateChanged.connect(self.toggle_advanced_options)
             batch_layout.addWidget(self.advanced_checkbox)
 
             layout.addLayout(batch_layout)
 
-            self.advanced_group = QGroupBox("Advanced Options")
+            self.advanced_group = QGroupBox("Settings")
             advanced_layout = QVBoxLayout()
             self.advanced_group.setLayout(advanced_layout)
             self.advanced_group.setVisible(False)
@@ -141,25 +150,38 @@ class BackgroundRemover(QDockWidget):
 
             advanced_layout.addLayout(thread_layout)
 
+            # Row for API Key and Debug Mode
+            row_layout = QHBoxLayout()
+            self.api_key_button = QPushButton("API Key")
+            self.api_key_button.clicked.connect(self.show_settings_dialog)
+            row_layout.addWidget(self.api_key_button)
             self.debug_checkbox = QCheckBox("Debug Mode")
             self.debug_checkbox.stateChanged.connect(self.toggle_debug_mode)
-            advanced_layout.addWidget(self.debug_checkbox)
+            row_layout.addWidget(self.debug_checkbox)
+            advanced_layout.addLayout(row_layout)
 
-            self.masks_as_layers_checkbox = QCheckBox("Create masks as separate layers")
-            self.masks_as_layers_checkbox.setToolTip(
-                "If checked, masks will be created as separate paint layers instead of transparency masks")
-            advanced_layout.addWidget(self.masks_as_layers_checkbox)
+            # Test mask buttons (visible in debug mode)
+            test_layout = QHBoxLayout()
+            self.test_transparency_button = QPushButton("Test Transparency Mask")
+            self.test_transparency_button.clicked.connect(self.test_transparency_mask)
+            test_layout.addWidget(self.test_transparency_button)
 
+            self.test_selection_button = QPushButton("Test Selection Mask")
+            self.test_selection_button.clicked.connect(self.test_selection_mask)
+            test_layout.addWidget(self.test_selection_button)
+            advanced_layout.addLayout(test_layout)
+
+            # Keep the old checkbox for backwards compatibility but hide it
+            # (will be removed in future clean-up)
+            self.masks_as_layers_checkbox = QCheckBox("[DEPRECATED] Create masks as separate layers")
+            self.masks_as_layers_checkbox.setVisible(False)
 
             layout.addWidget(self.advanced_group)
 
             button_layout = QHBoxLayout()
-
-            # Temporarily disabled to debug
-            # self.settings_button = QPushButton("Settings")
-            # self.settings_button.clicked.connect(self.show_settings)
-            # button_layout.addWidget(self.settings_button)
-
+            # Compact button-layout spacing
+            button_layout.setContentsMargins(0, 0, 0, 0)
+            button_layout.setSpacing(5)
             self.action_button = QPushButton("Remove")
             self.action_button.clicked.connect(self.remove_background)
             button_layout.addWidget(self.action_button)
@@ -180,15 +202,48 @@ class BackgroundRemover(QDockWidget):
             self.status_label.setReadOnly(True)
             self.status_label.setLineWrapMode(QTextEdit.WidgetWidth)
             self.status_label.setMinimumHeight(25)  # Set a default minimum height
+            # Hide status log unless debug mode is enabled
+            self.status_label.setVisible(False)
             layout.addWidget(self.status_label)
 
-            self.setWidget(widget)
+            # Wrap the content in a scroll area to enable scrolling when the widget is taller than the viewport
+            scroll_area = QScrollArea()
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setWidget(widget)
+            self.setWidget(scroll_area)
+
+            # Add extra top padding to groupbox titles so the text isn't clipped
+            try:
+                content_widget = scroll_area.widget()
+                if content_widget:
+                    content_widget.setStyleSheet(
+                        "QGroupBox::title {"
+                        "subcontrol-origin: margin;"
+                        "subcontrol-position: top left;"
+                        "padding-top: 6px;"
+                        "}"
+                    )
+            except Exception:
+                pass
 
             # Load saved API key
             self.load_api_key()
 
             # Create menu action for settings
             self.create_settings_menu()
+            # Initialize UI state based on current mode (after all controls are set up)
+            self.on_mode_changed()
+
+            # Register this widget with the current canvas to receive canvasChanged events
+            try:
+                window = Krita.instance().activeWindow()
+                view = window.activeView() if window else None
+                canvas = view.canvas() if view else None
+                if canvas:
+                    canvas.addObserver(self)
+                    self._canvas = canvas
+            except Exception:
+                pass
 
         except Exception as e:
             import traceback
@@ -204,15 +259,22 @@ class BackgroundRemover(QDockWidget):
         """Handle mode changes and update UI accordingly"""
         mode = self.mode_button_group.checkedId()
 
-        # Update button text based on mode
-        if mode == 1:  # Generate Mask mode
-            self.action_button.setText("Generate Mask")
-        else:
-            self.action_button.setText("Remove")
-
+        # Show or hide mask import selector based on mode
+        self.mask_import_combo.setVisible(mode == 1)
         # Enable batch for all modes
         self.batch_checkbox.setEnabled(True)
-        self.status_label.clear()
+        # Clear status label if available
+        if hasattr(self, 'status_label'):
+            self.status_label.clear()
+
+        # Update action button label based on selected mode
+        if hasattr(self, 'action_button'):
+            if mode == 0:
+                # Remove Background mode
+                self.action_button.setText("Remove")
+            else:
+                # Generate Masks mode
+                self.action_button.setText("Generate")
 
     def show_settings_dialog(self):
         """Show settings dialog for API key configuration"""
@@ -225,7 +287,6 @@ class BackgroundRemover(QDockWidget):
     def toggle_advanced_options(self):
         is_advanced = self.advanced_checkbox.isChecked()
         self.advanced_group.setVisible(is_advanced)
-        self.update_debug_buttons_visibility()
         self.toggle_batch_mode()  # Update thread visibility
 
     def toggle_thread_count(self):
@@ -233,7 +294,7 @@ class BackgroundRemover(QDockWidget):
 
     def copy_status_text(self):
         clipboard = QApplication.clipboard()
-        clipboard.setText(self.status_label.toPlainText())
+        clipboard.setText(self.status_label.toPlainText())  # type: ignore
         QMessageBox.information(self, "Copied", "Status text copied to clipboard.", QMessageBox.Ok)
 
     def toggle_batch_mode(self):
@@ -250,6 +311,12 @@ class BackgroundRemover(QDockWidget):
         debug_mode = self.debug_checkbox.isChecked()
         self.open_temp_dir_button.setVisible(is_advanced and debug_mode)
         self.copy_text_button.setVisible(is_advanced and debug_mode)
+        # Show test mask buttons only in debug and advanced mode
+        self.test_transparency_button.setVisible(is_advanced and debug_mode)
+        self.test_selection_button.setVisible(is_advanced and debug_mode)
+        # Show or hide status log based on debug mode
+        if hasattr(self, 'status_label'):
+            self.status_label.setVisible(is_advanced and debug_mode)
 
     def open_temp_directory(self):
         temp_dir = tempfile.gettempdir()
@@ -264,11 +331,11 @@ class BackgroundRemover(QDockWidget):
         app = Krita.instance()
 
         # Check for the old API key setting
-        old_api_key = app.readSetting("BackgroundRemoverBriaAI", "api_key", "")
+        old_api_key = app.readSetting("BriaMaskToolsBriaAI", "api_key", "")
         if old_api_key:
             # If the old key is found, save it to the new setting and delete the old setting
             app.writeSetting("AGD_BriaAI", "api_key", old_api_key)
-            app.writeSetting("BackgroundRemoverBriaAI", "api_key", "")  # Clear the old key
+            app.writeSetting("BriaMaskToolsBriaAI", "api_key", "")  # Clear the old key
             self.api_key = old_api_key
         else:
             # If no old key is found, just load the new key
@@ -285,10 +352,10 @@ class BackgroundRemover(QDockWidget):
         self.status_label.setText("API Key saved")
         # Clear any API key error status
         if hasattr(self, 'api_key_status'):
-            self.api_key_status.setText("")
-            self.api_key_status.setStyleSheet("")
+            self.api_key_status.setText("")  # type: ignore
+            self.api_key_status.setStyleSheet("")  # type: ignore
         if hasattr(self, 'api_key_input'):
-            self.api_key_input.setStyleSheet("")  # Reset to default style
+            self.api_key_input.setStyleSheet("")  # reset  # type: ignore
 
     def detect_mask(self, document, node):
         """Detect mask from various sources in priority order"""
@@ -340,14 +407,14 @@ class BackgroundRemover(QDockWidget):
 
             # Get selected mode
             mode = self.mode_button_group.checkedId()
-            mode_names = ["Remove Background", "Generate Mask"]
+            mode_names = ["Remove Background", "Generate Masks"]
             mode_name = mode_names[mode]
 
             # Create a progress dialog
             try:
                 progress = QProgressDialog(f"{mode_name}...", "Cancel", 0, 100,
-                                          Krita.instance().activeWindow().qwindow())
-                progress.setWindowModality(Qt.WindowModal)
+                                          Krita.instance().activeWindow().qwindow())  # type: ignore
+                progress.setWindowModality(Qt.WindowModal)  # type: ignore
                 progress.setMinimumDuration(0)
                 progress.setValue(0)
                 progress.show()
@@ -366,25 +433,22 @@ class BackgroundRemover(QDockWidget):
                 button.setEnabled(False)
             self.mode_button_group.setExclusive(True)
 
-            # Get API key from input field
-            self.api_key = self.api_key_input.text().strip()
+            # Load API key from persistent settings
+            self.load_api_key()
 
-            # Clean the API key - remove any quotes or extra whitespace
-            self.api_key = self.api_key.strip('"\'').strip()
-
-            # Check if API key is blank
-            if self.api_key == "":
-                self.status_label.setText("Error: API key is blank. Please enter your API key in the field above.")
+            # Ensure an API key has been configured
+            if not self.api_key:
                 progress.close()
-                # Re-enable UI
+                QMessageBox.warning(None, "Missing API Key", "Please set your API key under Settings.", QMessageBox.Ok)
+                self.show_settings_dialog()
                 self.enable_ui()
                 return
 
-            # Basic API key validation
+            # Validate API key length
             if len(self.api_key) < 10:
-                self.status_label.setText("Error: API key appears too short. Please check your API key.")
                 progress.close()
-                # Re-enable UI
+                QMessageBox.warning(None, "Invalid API Key", "The API key appears too short. Please check your Settings.", QMessageBox.Ok)
+                self.show_settings_dialog()
                 self.enable_ui()
                 return
 
@@ -483,7 +547,7 @@ class BackgroundRemover(QDockWidget):
                 try:
                     result = self.process_node(node, self.api_key, document, context, mode)
                     processed_count += 1
-                    if "successfully" in result.lower():
+                    if "successfully" in result.lower():  # type: ignore
                         success_count += 1
                     else:
                         error_messages.append(result)
@@ -633,10 +697,9 @@ class BackgroundRemover(QDockWidget):
                         if image.isNull():
                             return "Error: Failed to load result image"
 
-                        # Convert image data to bytes
-                        ptr = image.constBits()
-                        ptr.setsize(image.byteCount())
-                        new_layer.setPixelData(bytes(ptr), 0, 0, image.width(), image.height())
+                        # Convert image data to bytes safely
+                        raw = qimage_to_bytes(image)
+                        new_layer.setPixelData(raw, 0, 0, image.width(), image.height())
 
                         # Add the new layer to the document
                         document.rootNode().addChildNode(new_layer, node)
@@ -799,7 +862,7 @@ class BackgroundRemover(QDockWidget):
 
             # Scale the image
             scaled_img = export_img.scaled(scaled_width, scaled_height,
-                                          Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                                          Qt.KeepAspectRatio, Qt.SmoothTransformation)  # type: ignore
 
             # Save scaled image to temp file
             scaled_temp_file = os.path.join(temp_dir, f"scaled_{unique_id}.jpg")
@@ -924,7 +987,7 @@ class BackgroundRemover(QDockWidget):
                                                     continue
 
                                                 # Skip the panoptic map as it's not useful as a mask
-                                                if 'panoptic' in filename.lower():
+                                                if 'panoptic' in filename.lower():  # type: ignore
                                                     if self.debug_checkbox.isChecked():
                                                         self.log_error(f"Skipping panoptic map: {filename}")
                                                     continue
@@ -948,8 +1011,8 @@ class BackgroundRemover(QDockWidget):
 
                                         mask_files.sort(key=extract_number)
 
+                                        # Iterate through list and create per-mask nodes
                                         for idx, (mask_file, filename) in enumerate(mask_files):
-
                                             # Extract mask number from filename if available
                                             mask_num = extract_number((mask_file, filename))
                                             if mask_num != 999:
@@ -957,13 +1020,15 @@ class BackgroundRemover(QDockWidget):
                                             else:
                                                 mask_name = f"Mask {idx + 1}"
 
-                                            # Create mask as either transparency mask or separate layer
-                                            if self.masks_as_layers_checkbox.isChecked():
-                                                # Create as separate paint layer
-                                                mask_layer = document.createNode(mask_name, "paintlayer")
-                                            else:
-                                                # Create as transparency mask (default)
-                                                mask_layer = document.createNode(mask_name, "transparencymask")
+                                            # Create mask according to preference
+                                            import_mode = self.get_selected_mask_import_mode()
+                                            node_type = {
+                                                "layers": "paintlayer",
+                                                "transparency": "transparencymask",
+                                                "selection": "selectionmask",
+                                            }[import_mode]
+
+                                            mask_layer = document.createNode(mask_name, node_type)
 
                                             if not mask_layer:
                                                 continue  # Skip if layer creation fails
@@ -982,38 +1047,39 @@ class BackgroundRemover(QDockWidget):
                                                         f"Original layer bounds: "
                                                         f"{node.bounds().width()}x{node.bounds().height()}")
 
-                                                # Always scale mask back to original dimensions
-                                                # The mask is returned at the scaled size (800px on longer dimension)
-                                                # We need to scale it back to match the original layer
-                                                layer_width = node.bounds().width()
-                                                layer_height = node.bounds().height()
+                                                # Use helper functions for mask creation
+                                                if node_type == "transparencymask":
+                                                    # create and attach transparency mask
+                                                    # remove placeholder layer and use helper
+                                                    document.rootNode().removeChildNode(mask_layer)
+                                                    mask_layer = create_transparency_mask_from_qimage(document, node, mask_name, mask_image)
+                                                elif node_type == "selectionmask":
+                                                    # remove placeholder layer and use helper
+                                                    document.rootNode().removeChildNode(mask_layer)
+                                                    mask_layer = create_selection_mask_from_qimage(document, node, mask_name, mask_image)
+                                                else:
+                                                    # paintlayer: scale to original layer size and prepare pixel data
+                                                    lw = node.bounds().width()
+                                                    lh = node.bounds().height()
+                                                    mask_image = mask_image.scaled(
+                                                        lw, lh,
+                                                        Qt.IgnoreAspectRatio, Qt.SmoothTransformation)  # type: ignore
+                                                    raw, w, h = prepare_mask_bytes(node_type, mask_image)
+                                                    mask_layer.setPixelData(raw, 0, 0, w, h)
 
-                                                if self.debug_checkbox.isChecked():
-                                                    self.log_error(
-                                                        f"Scaling mask from {mask_image.width()}x{mask_image.height()} "
-                                                        f"back to original size: {layer_width}x{layer_height}")
-
-                                                # Scale mask to match original layer dimensions
-                                                mask_image = mask_image.scaled(
-                                                    layer_width, layer_height,
-                                                    Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-
-                                                # Convert image data to bytes
-                                                ptr = mask_image.constBits()
-                                                ptr.setsize(mask_image.byteCount())
-                                                mask_layer.setPixelData(bytes(ptr), 0, 0,
-                                                                      mask_image.width(), mask_image.height())
-
-                                                # Add the mask layer
-                                                if self.masks_as_layers_checkbox.isChecked():
-                                                    # Add as sibling layer (above the original)
-                                                    parent = node.parentNode()
-                                                    if not parent:
-                                                        parent = document.rootNode()
+                                                # Add to document according to preference
+                                                if import_mode == "layers":
+                                                    parent = node.parentNode() or document.rootNode()
                                                     parent.addChildNode(mask_layer, node)
                                                 else:
-                                                    # Add as child transparency mask
                                                     node.addChildNode(mask_layer, None)
+
+                                                # Scale masks for separate layers mode
+                                                if node_type == "paintlayer":
+                                                    lw = node.bounds().width()
+                                                    lh = node.bounds().height()
+                                                    mask_image = mask_image.scaled(lw, lh,
+                                                                          Qt.IgnoreAspectRatio, Qt.SmoothTransformation)  # type: ignore
 
                                                 mask_count += 1
 
@@ -1040,17 +1106,38 @@ class BackgroundRemover(QDockWidget):
                                     # Try to load as image
                                     mask_image = QImage(download_file)
                                     if not mask_image.isNull():
-                                        # Create single transparency mask
-                                        mask_layer = document.createNode("Generated Mask", "transparencymask")
+                                        # Create single mask according to preference
+                                        import_mode = self.get_selected_mask_import_mode()
+                                        node_type = {
+                                            "layers": "paintlayer",
+                                            "transparency": "transparencymask",
+                                            "selection": "selectionmask",
+                                        }[import_mode]
+                                        mask_layer = document.createNode("Generated Mask", node_type)
                                         if mask_layer:
-                                            # Convert image data to bytes
-                                            ptr = mask_image.constBits()
-                                            ptr.setsize(mask_image.byteCount())
-                                            mask_layer.setPixelData(bytes(ptr), 0, 0,
-                                                                  mask_image.width(), mask_image.height())
+                                            # Use helpers for mask creation
+                                            if node_type == "transparencymask":
+                                                document.rootNode().removeChildNode(mask_layer)
+                                                mask_layer = create_transparency_mask_from_qimage(document, node, "Generated Mask", mask_image)
+                                            elif node_type == "selectionmask":
+                                                document.rootNode().removeChildNode(mask_layer)
+                                                mask_layer = create_selection_mask_from_qimage(document, node, "Generated Mask", mask_image)
+                                            else:
+                                                # paintlayer: scale to original layer size and prepare pixel data
+                                                lw = node.bounds().width()
+                                                lh = node.bounds().height()
+                                                mask_image = mask_image.scaled(
+                                                    lw, lh,
+                                                    Qt.IgnoreAspectRatio, Qt.SmoothTransformation)  # type: ignore
+                                                raw, w, h = prepare_mask_bytes(node_type, mask_image)
+                                                mask_layer.setPixelData(raw, 0, 0, w, h)
 
-                                            # Add as child of the node
-                                            node.addChildNode(mask_layer, None)
+                                            # Add to document according to preference
+                                            if import_mode == "layers":
+                                                parent = node.parentNode() or document.rootNode()
+                                                parent.addChildNode(mask_layer, node)
+                                            else:
+                                                node.addChildNode(mask_layer, None)
                                             mask_count = 1
 
                                     # Cleanup
@@ -1079,40 +1166,73 @@ class BackgroundRemover(QDockWidget):
                                 else:
                                     return "Error: No valid masks found in ZIP file"
                             elif masks_list and isinstance(masks_list, list):
-                                # Handle individual mask URLs
+                                # Iterate through list and create per-mask nodes
                                 for idx, mask_url in enumerate(masks_list):
                                     if not mask_url or not isinstance(mask_url, str):
                                         continue
-
-                                    # Download mask
                                     mask_file = os.path.join(temp_dir, f"mask_{unique_id}_{idx}.png")
                                     try:
                                         urllib.request.urlretrieve(mask_url, mask_file)
-                                    except Exception as e:
-                                        if self.debug_checkbox.isChecked():
-                                            self.log_error(f"Failed to download mask {idx}: {str(e)}")
+                                    except Exception:
                                         continue
 
-                                    # Create transparency mask
+                                    # Determine import mode
+                                    import_mode = self.get_selected_mask_import_mode()
+
+                                    # Create a mask node for each URL
                                     mask_name = f"Mask {idx + 1}"
-                                    mask_layer = document.createNode(mask_name, "transparencymask")
+                                    node_type = {
+                                        "layers": "paintlayer",
+                                        "transparency": "transparencymask",
+                                        "selection": "selectionmask",
+                                    }[import_mode]
+
+                                    mask_layer = document.createNode(mask_name, node_type)
                                     if not mask_layer:
                                         continue
 
-                                    # Load mask image
+                                    # Load and scale mask image
                                     mask_image = QImage(mask_file)
-                                    if not mask_image.isNull():
-                                        # Convert image data to bytes
-                                        ptr = mask_image.constBits()
-                                        ptr.setsize(mask_image.byteCount())
-                                        mask_layer.setPixelData(bytes(ptr), 0, 0,
-                                                              mask_image.width(), mask_image.height())
+                                    if mask_image.isNull():
+                                        continue
+                                    layer_width = node.bounds().width()
+                                    layer_height = node.bounds().height()
+                                    mask_image = mask_image.scaled(
+                                        layer_width, layer_height,
+                                        Qt.IgnoreAspectRatio, Qt.SmoothTransformation)  # type: ignore
 
-                                        # Add as child of the node
+                                    # Use helpers for mask creation
+                                    if node_type == "transparencymask":
+                                        document.rootNode().removeChildNode(mask_layer)
+                                        mask_layer = create_transparency_mask_from_qimage(document, node, mask_name, mask_image)
+                                    elif node_type == "selectionmask":
+                                        document.rootNode().removeChildNode(mask_layer)
+                                        mask_layer = create_selection_mask_from_qimage(document, node, mask_name, mask_image)
+                                    else:
+                                        # paintlayer: scale to original layer size and prepare pixel data
+                                        lw = node.bounds().width()
+                                        lh = node.bounds().height()
+                                        mask_image = mask_image.scaled(
+                                            lw, lh,
+                                            Qt.IgnoreAspectRatio, Qt.SmoothTransformation)  # type: ignore
+                                        raw, w, h = prepare_mask_bytes(node_type, mask_image)
+                                        mask_layer.setPixelData(raw, 0, 0, w, h)
+
+                                    # Add to document according to preference
+                                    if import_mode == "layers":
+                                        parent = node.parentNode() or document.rootNode()
+                                        parent.addChildNode(mask_layer, node)
+                                    else:
                                         node.addChildNode(mask_layer, None)
-                                        mask_count += 1
 
-                                    # Cleanup
+                                    # Scale masks for separate layers mode
+                                    if node_type == "paintlayer":
+                                        lw = node.bounds().width()
+                                        lh = node.bounds().height()
+                                        mask_image = mask_image.scaled(lw, lh,
+                                                                      Qt.IgnoreAspectRatio, Qt.SmoothTransformation)  # type: ignore
+
+                                    mask_count += 1
                                     if not self.debug_checkbox.isChecked():
                                         try:
                                             os.remove(mask_file)
@@ -1227,10 +1347,10 @@ class BackgroundRemover(QDockWidget):
     def highlight_invalid_api_key(self):
         """Highlight the API key field when it's invalid"""
         if hasattr(self, 'api_key_status'):
-            self.api_key_status.setText("Invalid API Key - Please check and re-enter")
-            self.api_key_status.setStyleSheet("QLabel { color: red; font-weight: bold; }")
+            self.api_key_status.setText("Invalid API Key - Please check and re-enter")  # type: ignore
+            self.api_key_status.setStyleSheet("QLabel { color: red; font-weight: bold; }")  # type: ignore
         if hasattr(self, 'api_key_input'):
-            self.api_key_input.setStyleSheet("QLineEdit { border: 2px solid red; }")
+            self.api_key_input.setStyleSheet("QLineEdit { border: 2px solid red; }")  # type: ignore
 
     def enable_ui(self):
         """Re-enable all UI elements after processing"""
@@ -1242,7 +1362,77 @@ class BackgroundRemover(QDockWidget):
     def canvasChanged(self, canvas):
         pass
 
-class BackgroundRemoverExtension(krita.Extension):
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Register with current canvas when shown
+        try:
+            window = Krita.instance().activeWindow()
+            view = window.activeView() if window else None
+            canvas = view.canvas() if view else None
+            if canvas:
+                canvas.addObserver(self)
+                self._canvas = canvas
+        except Exception:
+            pass
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        # Unregister from canvas when hidden
+        try:
+            if hasattr(self, '_canvas') and self._canvas:
+                self._canvas.removeObserver(self)  # type: ignore
+                self._canvas = None
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------
+    # Helper: determine the desired mask import mode
+    # ------------------------------------------------------------
+    def get_selected_mask_import_mode(self):
+        """Return one of 'selection', 'transparency', 'layers' depending on UI choice"""
+        idx = 0
+        try:
+            idx = self.mask_import_combo.currentIndex()
+        except Exception:
+            pass  # Fallback if combo not yet initialised
+
+        # 0 = Selection masks, 1 = Transparency masks, 2 = Layers
+        if idx == 0:
+            return "selection"
+        elif idx == 1:
+            return "transparency"
+        else:
+            return "layers"
+
+    def test_transparency_mask(self):
+        """Create a test 20x20 white transparency mask on the active layer."""
+        app = Krita.instance()
+        doc = app.activeDocument()
+        if not doc:
+            return
+        node = doc.activeNode()
+        if not node:
+            return
+        # Create a small white mask image
+        img = QImage(20, 20, QImage.Format_Grayscale8)
+        img.fill(255)
+        create_transparency_mask_from_qimage(doc, node, "Test Transparency Mask", img)
+
+    def test_selection_mask(self):
+        """Create a test 20x20 selection mask on the active layer."""
+        app = Krita.instance()
+        doc = app.activeDocument()
+        if not doc:
+            return
+        node = doc.activeNode()
+        if not node:
+            return
+        # Create a small white mask image
+        img = QImage(20, 20, QImage.Format_Grayscale8)
+        img.fill(255)
+        create_selection_mask_from_qimage(doc, node, "Test Selection Mask", img)
+
+class BriaMaskToolsExtension(krita.Extension):
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -1282,7 +1472,7 @@ class BackgroundRemoverExtension(krita.Extension):
             app.writeSetting("AGD_BriaAI", "api_key", new_key)
 
     def find_docker(self):
-        """Find the BackgroundRemover docker instance"""
+        """Find the BriaMaskTools docker instance"""
         app = Krita.instance()
         # Try to find in all windows
         for window in app.windows():
@@ -1293,14 +1483,14 @@ class BackgroundRemoverExtension(krita.Extension):
                         # The docker widget might be wrapped, so we need to check carefully
                         if hasattr(docker, 'widget') and callable(docker.widget):
                             widget = docker.widget()
-                            if isinstance(widget, BackgroundRemover):
+                            if isinstance(widget, BriaMaskTools):
                                 return widget
                     except:
                         pass
 
         # Alternative method - check all QDockWidget instances
         for widget in QApplication.allWidgets():
-            if isinstance(widget, BackgroundRemover):
+            if isinstance(widget, BriaMaskTools):
                 return widget
 
         return None
@@ -1328,7 +1518,7 @@ class BackgroundRemoverExtension(krita.Extension):
 
 # Add extension with error handling
 try:
-    extension = BackgroundRemoverExtension(Krita.instance())
+    extension = BriaMaskToolsExtension(Krita.instance())
     Krita.instance().addExtension(extension)
 except Exception as e:
     import traceback
@@ -1337,7 +1527,7 @@ except Exception as e:
     traceback.print_exc(file=sys.stderr)
 
 def createInstance():
-    return BackgroundRemover()
+    return BriaMaskTools()
 
 Krita.instance().addDockWidgetFactory(
     DockWidgetFactory("krita_bria_masktools",
