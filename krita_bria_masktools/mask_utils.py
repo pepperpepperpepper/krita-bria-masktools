@@ -107,7 +107,7 @@ def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QIm
     """
     # Determine full document dimensions
     w, h = document.width(), document.height()
-    # Scale input image to full document size
+    # Scale input image to match document size
     scaled = img.scaled(w, h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)  # type: ignore
     # Convert to 8-bit grayscale and strip padding
     gray = scaled.convertToFormat(QImage.Format_Grayscale8)
@@ -118,21 +118,48 @@ def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QIm
     for i in range(len(data)):
         data[i] = 255 if data[i] >= threshold else 0
 
-    # Create a true selection mask via PyKrita API
+    # Create using createSelectionMask to ensure proper type
     try:
         mask_node = document.createSelectionMask(mask_name)
-    except Exception:
+    except Exception as e:
+        # Fallback if createSelectionMask not available
         mask_node = document.createNode(mask_name, "selectionmask")
+        # For fallback, use setPixelData directly since setSelection may not be available
+        mask_node.setPixelData(bytes(data), 0, 0, w, h)
+    else:
+        # For normal case, use intermediate Selection
+        sel = Selection(document)
+        sel.setPixelData(bytes(data), 0, 0, w, h)
+        mask_node.setSelection(sel)
 
-    # Initialize Krita Selection
-    sel = Selection()
-    sel.select(bytes(data), 0, 0, w, h)
-    mask_node.setSelection(sel)
+    # Detach from any existing parent to avoid assert
+    try:
+        current_parent = mask_node.parentNode()
+        if current_parent:
+            current_parent.removeChildNode(mask_node)
+    except Exception:
+        pass
+
+    # Attach to the target parent layer
     parent_node.addChildNode(mask_node, None)
 
-    # Start mask as invisible by default
+    # Wait for document to stabilize
     try:
-        mask_node.setVisible(False)
+        document.waitForDone()
+    except Exception:
+        pass
+
+    # Make visible by default
+    try:
+        mask_node.setVisible(True)
+    except Exception:
+        pass
+
+    # Activate if possible
+    try:
+        mask_sel = mask_node.selection()
+        if mask_sel is not None:
+            document.setSelection(mask_sel)
     except Exception:
         pass
 
@@ -140,4 +167,4 @@ def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QIm
         document.refreshProjection()
     except Exception:
         pass
-    return mask_node 
+    return mask_node
