@@ -68,7 +68,7 @@ def prepare_mask_bytes(node_type: str, img: QImage):
 # Create and attach a Krita mask node from a QImage
 # ------------------------------------------------------------
 
-def create_transparency_mask_from_qimage(document, parent_node, mask_name, img: QImage):
+def create_transparency_mask_from_qimage(document, parent_node, mask_name, img: QImage, add_to_new_layer: bool = False):
     """
     Create and attach a transparency mask node from a QImage.
     Returns the created mask node.
@@ -84,8 +84,19 @@ def create_transparency_mask_from_qimage(document, parent_node, mask_name, img: 
     # Create a true transparency mask via PyKrita API
     mask_node = document.createTransparencyMask(mask_name)
 
+    if add_to_new_layer:
+        new_layer = document.createNode(f"{mask_name} Layer", "paintlayer")
+        grandparent = parent_node.parentNode()
+        if grandparent:
+            grandparent.addChildNode(new_layer, parent_node)
+        else:
+            document.rootNode().addChildNode(new_layer, None)
+        attach_to = new_layer
+    else:
+        attach_to = parent_node
+
     # Attach and apply mask data
-    parent_node.addChildNode(mask_node, None)
+    attach_to.addChildNode(mask_node, None)
     mask_node.setPixelData(raw, 0, 0, w, h)
 
     # Start mask as invisible so users can toggle visibility via the eye icon
@@ -100,7 +111,7 @@ def create_transparency_mask_from_qimage(document, parent_node, mask_name, img: 
         pass
     return mask_node
 
-def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QImage):
+def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QImage, add_to_new_layer: bool = False):
     """
     Create and attach a selection mask node from a QImage.
     Returns the created mask node.
@@ -132,6 +143,17 @@ def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QIm
         sel.setPixelData(bytes(data), 0, 0, w, h)
         mask_node.setSelection(sel)
 
+    if add_to_new_layer:
+        new_layer = document.createNode(f"{mask_name} Layer", "paintlayer")
+        grandparent = parent_node.parentNode()
+        if grandparent:
+            grandparent.addChildNode(new_layer, parent_node)
+        else:
+            document.rootNode().addChildNode(new_layer, None)
+        attach_to = new_layer
+    else:
+        attach_to = parent_node
+
     # Detach from any existing parent to avoid assert
     try:
         current_parent = mask_node.parentNode()
@@ -141,7 +163,7 @@ def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QIm
         pass
 
     # Attach to the target parent layer
-    parent_node.addChildNode(mask_node, None)
+    attach_to.addChildNode(mask_node, None)
 
     # Wait for document to stabilize
     try:
@@ -152,14 +174,6 @@ def create_selection_mask_from_qimage(document, parent_node, mask_name, img: QIm
     # Make visible by default
     try:
         mask_node.setVisible(True)
-    except Exception:
-        pass
-
-    # Activate if possible
-    try:
-        mask_sel = mask_node.selection()
-        if mask_sel is not None:
-            document.setSelection(mask_sel)
     except Exception:
         pass
 

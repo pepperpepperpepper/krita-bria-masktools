@@ -111,7 +111,15 @@ class BriaMaskTools(QDockWidget):
             self.mask_import_combo.setCurrentIndex(0)
             self.mask_import_combo.setToolTip("Choose how downloaded masks should be imported into Krita")
             self.mask_import_combo.setVisible(False)
+            self.mask_import_combo.currentIndexChanged.connect(self.update_add_to_new_layer_visibility)
             layout.addWidget(self.mask_import_combo)
+
+            # Add to new layer checkbox
+            self.add_to_new_layer_checkbox = QCheckBox("Add to new layer")
+            self.add_to_new_layer_checkbox.setChecked(False)
+            self.add_to_new_layer_checkbox.setToolTip("Add masks to a new blank layer instead of the original")
+            self.add_to_new_layer_checkbox.setVisible(False)
+            layout.addWidget(self.add_to_new_layer_checkbox)
 
             # Connect mode changes to update batch checkbox state
             self.mode_button_group.buttonClicked.connect(self.on_mode_changed)
@@ -170,11 +178,6 @@ class BriaMaskTools(QDockWidget):
             self.test_selection_button.clicked.connect(self.test_selection_mask)
             test_layout.addWidget(self.test_selection_button)
             advanced_layout.addLayout(test_layout)
-
-            # Keep the old checkbox for backwards compatibility but hide it
-            # (will be removed in future clean-up)
-            self.masks_as_layers_checkbox = QCheckBox("[DEPRECATED] Create masks as separate layers")
-            self.masks_as_layers_checkbox.setVisible(False)
 
             layout.addWidget(self.advanced_group)
 
@@ -263,9 +266,6 @@ class BriaMaskTools(QDockWidget):
         self.mask_import_combo.setVisible(mode == 1)
         # Enable batch for all modes
         self.batch_checkbox.setEnabled(True)
-        # Clear status label if available
-        if hasattr(self, 'status_label'):
-            self.status_label.clear()
 
         # Update action button label based on selected mode
         if hasattr(self, 'action_button'):
@@ -275,6 +275,15 @@ class BriaMaskTools(QDockWidget):
             else:
                 # Generate Masks mode
                 self.action_button.setText("Generate")
+
+        self.update_add_to_new_layer_visibility()
+
+    def update_add_to_new_layer_visibility(self):
+        if self.generate_mask_radio.isChecked():
+            idx = self.mask_import_combo.currentIndex()
+            self.add_to_new_layer_checkbox.setVisible(idx == 0)
+        else:
+            self.add_to_new_layer_checkbox.setVisible(False)
 
     def show_settings_dialog(self):
         """Show settings dialog for API key configuration"""
@@ -547,7 +556,7 @@ class BriaMaskTools(QDockWidget):
                 try:
                     result = self.process_node(node, self.api_key, document, context, mode)
                     processed_count += 1
-                    if "successfully" in result.lower():  # type: ignore
+                    if not result.startswith("Error"):
                         success_count += 1
                     else:
                         error_messages.append(result)
@@ -563,7 +572,7 @@ class BriaMaskTools(QDockWidget):
             # Unset batch mode
             try:
                 document.setBatchmode(False)
-            except Exception:
+            except:
                 pass
 
             # End timing the process
@@ -577,7 +586,7 @@ class BriaMaskTools(QDockWidget):
             if error_messages:
                 final_status += f"\nErrors:\n" + "\n".join(error_messages)
 
-            self.status_label.setText(final_status)
+            self.status_label.append(final_status)
             progress.setValue(100)
             progress.close()
 
@@ -922,6 +931,23 @@ class BriaMaskTools(QDockWidget):
 
                             mask_count = 0
 
+                            import_mode = self.get_selected_mask_import_mode()
+                            node_type = {
+                                "layers": "paintlayer",
+                                "transparency": "transparencymask",
+                                "selection": "selectionmask",
+                            }[import_mode]
+
+                            parent_node_for_masks = node
+                            if import_mode == "selection" and self.add_to_new_layer_checkbox.isChecked():
+                                new_layer = document.createNode("Generated Masks Layer", "paintlayer")
+                                grandparent = node.parentNode()
+                                if grandparent:
+                                    grandparent.addChildNode(new_layer, node)
+                                else:
+                                    document.rootNode().addChildNode(new_layer, None)
+                                parent_node_for_masks = new_layer
+
                             if objects_masks_url:
                                 # Download the file (could be ZIP or image)
                                 download_file = os.path.join(temp_dir, f"masks_{unique_id}_download")
@@ -1020,14 +1046,6 @@ class BriaMaskTools(QDockWidget):
                                             else:
                                                 mask_name = f"Mask {idx + 1}"
 
-                                            # Create mask according to preference
-                                            import_mode = self.get_selected_mask_import_mode()
-                                            node_type = {
-                                                "layers": "paintlayer",
-                                                "transparency": "transparencymask",
-                                                "selection": "selectionmask",
-                                            }[import_mode]
-
                                             mask_layer = document.createNode(mask_name, node_type)
 
                                             if not mask_layer:
@@ -1052,11 +1070,11 @@ class BriaMaskTools(QDockWidget):
                                                     # create and attach transparency mask
                                                     # remove placeholder layer and use helper
                                                     document.rootNode().removeChildNode(mask_layer)
-                                                    mask_layer = create_transparency_mask_from_qimage(document, node, mask_name, mask_image)
+                                                    mask_layer = create_transparency_mask_from_qimage(document, parent_node_for_masks, mask_name, mask_image)
                                                 elif node_type == "selectionmask":
                                                     # remove placeholder layer and use helper
                                                     document.rootNode().removeChildNode(mask_layer)
-                                                    mask_layer = create_selection_mask_from_qimage(document, node, mask_name, mask_image)
+                                                    mask_layer = create_selection_mask_from_qimage(document, parent_node_for_masks, mask_name, mask_image)
                                                 else:
                                                     # paintlayer: scale to original layer size and prepare pixel data
                                                     lw = node.bounds().width()
@@ -1072,7 +1090,7 @@ class BriaMaskTools(QDockWidget):
                                                     parent = node.parentNode() or document.rootNode()
                                                     parent.addChildNode(mask_layer, node)
                                                 else:
-                                                    node.addChildNode(mask_layer, None)
+                                                    parent_node_for_masks.addChildNode(mask_layer, None)
 
                                                 # Scale masks for separate layers mode
                                                 if node_type == "paintlayer":
@@ -1107,21 +1125,16 @@ class BriaMaskTools(QDockWidget):
                                     mask_image = QImage(download_file)
                                     if not mask_image.isNull():
                                         # Create single mask according to preference
-                                        import_mode = self.get_selected_mask_import_mode()
-                                        node_type = {
-                                            "layers": "paintlayer",
-                                            "transparency": "transparencymask",
-                                            "selection": "selectionmask",
-                                        }[import_mode]
-                                        mask_layer = document.createNode("Generated Mask", node_type)
+                                        mask_name = "Generated Mask"
+                                        mask_layer = document.createNode(mask_name, node_type)
                                         if mask_layer:
                                             # Use helpers for mask creation
                                             if node_type == "transparencymask":
                                                 document.rootNode().removeChildNode(mask_layer)
-                                                mask_layer = create_transparency_mask_from_qimage(document, node, "Generated Mask", mask_image)
+                                                mask_layer = create_transparency_mask_from_qimage(document, parent_node_for_masks, mask_name, mask_image)
                                             elif node_type == "selectionmask":
                                                 document.rootNode().removeChildNode(mask_layer)
-                                                mask_layer = create_selection_mask_from_qimage(document, node, "Generated Mask", mask_image)
+                                                mask_layer = create_selection_mask_from_qimage(document, parent_node_for_masks, mask_name, mask_image)
                                             else:
                                                 # paintlayer: scale to original layer size and prepare pixel data
                                                 lw = node.bounds().width()
@@ -1137,7 +1150,7 @@ class BriaMaskTools(QDockWidget):
                                                 parent = node.parentNode() or document.rootNode()
                                                 parent.addChildNode(mask_layer, node)
                                             else:
-                                                node.addChildNode(mask_layer, None)
+                                                parent_node_for_masks.addChildNode(mask_layer, None)
                                             mask_count = 1
 
                                     # Cleanup
@@ -1176,17 +1189,8 @@ class BriaMaskTools(QDockWidget):
                                     except Exception:
                                         continue
 
-                                    # Determine import mode
-                                    import_mode = self.get_selected_mask_import_mode()
-
                                     # Create a mask node for each URL
                                     mask_name = f"Mask {idx + 1}"
-                                    node_type = {
-                                        "layers": "paintlayer",
-                                        "transparency": "transparencymask",
-                                        "selection": "selectionmask",
-                                    }[import_mode]
-
                                     mask_layer = document.createNode(mask_name, node_type)
                                     if not mask_layer:
                                         continue
@@ -1204,10 +1208,10 @@ class BriaMaskTools(QDockWidget):
                                     # Use helpers for mask creation
                                     if node_type == "transparencymask":
                                         document.rootNode().removeChildNode(mask_layer)
-                                        mask_layer = create_transparency_mask_from_qimage(document, node, mask_name, mask_image)
+                                        mask_layer = create_transparency_mask_from_qimage(document, parent_node_for_masks, mask_name, mask_image)
                                     elif node_type == "selectionmask":
                                         document.rootNode().removeChildNode(mask_layer)
-                                        mask_layer = create_selection_mask_from_qimage(document, node, mask_name, mask_image)
+                                        mask_layer = create_selection_mask_from_qimage(document, parent_node_for_masks, mask_name, mask_image)
                                     else:
                                         # paintlayer: scale to original layer size and prepare pixel data
                                         lw = node.bounds().width()
@@ -1223,7 +1227,7 @@ class BriaMaskTools(QDockWidget):
                                         parent = node.parentNode() or document.rootNode()
                                         parent.addChildNode(mask_layer, node)
                                     else:
-                                        node.addChildNode(mask_layer, None)
+                                        parent_node_for_masks.addChildNode(mask_layer, None)
 
                                     # Scale masks for separate layers mode
                                     if node_type == "paintlayer":
